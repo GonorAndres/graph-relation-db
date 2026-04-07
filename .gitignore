@@ -1,0 +1,12 @@
+.env
+data/source/
+data/raw/
+data/clean/
+__pycache__/
+*.pyc
+tmp/
+subagents_outputs/
+*.png
+CLAUDE.md
+creditgraph-claude-code-context.md
+.claude/
