@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en" id="html-root">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CreditGraph: When SQL Isn't Enough</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #121012;
+      --surface: #1A1714;
+      --surface-2: #241E1A;
+      --border: #3A322C;
+      --text: #ECE3D4;
+      --muted: #A89A88;
+      --dim: #7A6E5E;
+      --accent: #E0955A;
+      --green: #3FB950;
+      --amber: #D29922;
+      --red: #F85149;
+      --orange: #F0883E;
+      --purple: #BC8CFF;
+      --np: #388BFD;
+      --nc: #F0883E;
+      --nl: #3FB950;
+      --nlb: #F85149;
+      --nlw: #D29922;
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+      --r: 8px;
+      --rl: 12px;
+      --t: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+    h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+    h2 { font-size: clamp(1.4rem, 2.5vw, 2rem); font-weight: 700; line-height: 1.2; }
+    h3 { font-size: 1.1rem; font-weight: 600; }
+    p { color: var(--muted); line-height: 1.75; }
+    code { font-family: var(--mono); font-size: 0.85em; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; color: var(--text); }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    .container-wide { max-width: 1360px; margin: 0 auto; padding: 0 24px; }
+    .section { padding: 80px 0; }
+    .accent { color: var(--accent); }
+
+    /* NAV */
+    .nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; height: 58px;
+      background: rgba(18,16,18,0.92); backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-brand { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+    .nav-brand span { color: var(--accent); }
+    .nav-right { display: flex; align-items: center; gap: 20px; }
+    .lang-toggle { display: flex; background: var(--surface-2); border-radius: 8px; padding: 3px; border: 1px solid var(--border); }
+    .lang-btn {
+      padding: 5px 14px; border-radius: 5px; border: none; cursor: pointer;
+      font-family: var(--font); font-size: 0.78rem; font-weight: 500;
+      color: var(--muted); background: transparent; transition: var(--t);
+    }
+    .lang-btn.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+
+    /* HERO */
+    .hero { padding: 96px 0 80px; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 24px;
+    }
+    .hero-eyebrow::before { content: ''; display: block; width: 20px; height: 1px; background: var(--accent); }
+    .hero h1 { margin-bottom: 22px; }
+    .hero h1 em { color: var(--accent); font-style: normal; }
+    .hero-sub { max-width: 620px; font-size: 1.05rem; margin-bottom: 0; }
+
+    /* PAGE INDEX */
+    .page-index { margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--border); }
+    .idx-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0; }
+    .idx-item { display: flex; align-items: center; }
+    .idx-item:not(:last-child)::after { content: '/'; color: var(--border); margin: 0 14px; font-size: 0.72rem; }
+    .idx-link {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.8rem; color: var(--muted); font-weight: 500;
+      text-decoration: none; transition: color var(--t);
+    }
+    .idx-link:hover { color: var(--accent); }
+    .idx-link:hover .idx-num { color: var(--accent); }
+    .idx-num { font-family: var(--mono); font-size: 0.68rem; color: var(--dim); }
+    @media (max-width: 600px) {
+      .idx-list { flex-direction: column; gap: 10px; }
+      .idx-item:not(:last-child)::after { display: none; }
+    }
+
+    /* SECTION SUB */
+    .section-sub { max-width: 680px; margin-top: 8px; margin-bottom: 44px; font-size: 0.97rem; }
+
+    /* CONTRAST SECTION */
+    #contrast { border-top: 1px solid var(--border); }
+    .dataset-meta { font-size: 0.78rem; color: var(--dim); font-family: var(--mono); letter-spacing: 0.02em; margin: 10px 0 32px; }
+    .contrast-grid { display: grid; grid-template-columns: 1fr 60px 1fr; gap: 24px; align-items: start; margin-top: 48px; }
+    @media (max-width: 800px) { .contrast-grid { grid-template-columns: 1fr; } }
+    .contrast-side { background: var(--surface); border-radius: var(--rl); padding: 24px; border: 1px solid var(--border); }
+    .contrast-label { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 18px; display: block; }
+    .contrast-divider { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-top: 80px; }
+    .divider-arrow { font-size: 1.4rem; color: var(--dim); }
+    .divider-but { font-size: 0.72rem; color: var(--dim); font-style: italic; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+    .stat-card { background: var(--surface-2); border-radius: var(--r); padding: 14px 16px; border: 1px solid var(--border); }
+    .stat-card.ok .stat-card-n { color: var(--green); }
+    .stat-card-n { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+    .stat-card-label { font-size: 0.72rem; color: var(--dim); margin-top: 2px; }
+    .table-mockup { overflow-x: auto; margin: 14px 0; }
+    .table-mockup table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.75rem; }
+    .table-mockup th { padding: 6px 8px; text-align: left; color: var(--dim); font-weight: 500; border-bottom: 1px solid var(--border); }
+    .table-mockup td { padding: 6px 8px; border-bottom: 1px solid rgba(48,54,61,0.4); color: var(--muted); }
+    .table-mockup .status-ok { color: var(--green); }
+    .table-mockup .status-bad { color: var(--red); }
+    .table-mockup .row-vencido { background: rgba(248,81,73,0.06); }
+    .table-mockup .more-row td { color: var(--dim); font-style: italic; text-align: center; padding: 10px; }
+    .contrast-verdict { margin-top: 14px; font-size: 0.88rem; }
+    .contrast-verdict.warn { color: var(--amber); }
+    .mini-graph { width: 100%; max-width: 100%; margin: 8px 0; display: block; }
+
+    /* GRAPH SECTION */
+    #graph-section { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 60px 0; }
+    .graph-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+    .graph-header h2 { font-size: 1.4rem; }
+    .graph-header .section-sub { margin-bottom: 0; }
+    .finding-buttons { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+    .find-btn {
+      padding: 6px 14px; border-radius: 20px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--muted); font-family: var(--font); font-size: 0.78rem; font-weight: 500;
+      cursor: pointer; transition: var(--t); white-space: nowrap;
+    }
+    .find-btn:hover { border-color: var(--muted); color: var(--text); }
+    .find-btn.active-all { background: var(--surface-2); color: var(--text); border-color: var(--muted); }
+    .find-btn[data-finding="1"].active { background: rgba(56,139,253,0.15); color: #79C0FF; border-color: #388BFD; }
+    .find-btn[data-finding="2"].active { background: rgba(248,81,73,0.15); color: #F85149; border-color: #F85149; }
+    .find-btn[data-finding="3"].active { background: rgba(210,153,34,0.15); color: #D29922; border-color: #D29922; }
+    .find-btn[data-finding="4"].active { background: rgba(188,140,255,0.15); color: #BC8CFF; border-color: #BC8CFF; }
+    .reset-btn { border-color: var(--dim); }
+    .graph-container {
+      position: relative; background: var(--bg); border-radius: var(--rl);
+      border: 1px solid var(--border); overflow: hidden; height: 560px;
+    }
+    #graph-svg { width: 100%; height: 100%; }
+    .node-tooltip {
+      position: absolute; pointer-events: none;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 10px 14px; font-size: 0.8rem; max-width: 210px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5); opacity: 0;
+      transition: opacity 0.15s; z-index: 20;
+    }
+    .tt-title { font-weight: 600; color: var(--text); margin-bottom: 5px; font-size: 0.82rem; }
+    .tt-row { display: flex; justify-content: space-between; gap: 12px; margin-top: 3px; }
+    .tt-key { color: var(--dim); font-size: 0.75rem; }
+    .tt-val { color: var(--text); font-size: 0.75rem; font-weight: 500; }
+    .tt-id { font-family: var(--mono); font-size: 0.68rem; color: var(--dim); margin-top: 6px; }
+    .graph-meta { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; flex-wrap: wrap; gap: 16px; }
+    .graph-legend { display: flex; gap: 18px; flex-wrap: wrap; }
+    .link-legend { display: flex; gap: 18px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 7px; font-size: 0.76rem; color: var(--muted); }
+    .legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .legend-dot.person { background: var(--np); }
+    .legend-dot.company { background: var(--nc); }
+    .legend-dot.loan-ok { background: var(--nl); }
+    .legend-dot.loan-bad { background: var(--nlb); }
+    .legend-dot.loan-warn { background: var(--nlw); }
+    .legend-line { width: 22px; height: 2px; display: inline-block; flex-shrink: 0; }
+    .legend-line.dashed { background: repeating-linear-gradient(to right, var(--dim) 0, var(--dim) 4px, transparent 4px, transparent 8px); }
+    .legend-line.solid-o { background: var(--orange); }
+    .legend-line.solid-b { background: var(--np); }
+    .graph-hint { font-size: 0.72rem; color: var(--dim); }
+
+    /* FINDINGS */
+    #findings { padding-bottom: 80px; }
+    .findings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 48px; }
+    @media (max-width: 860px) { .findings-grid { grid-template-columns: 1fr; } }
+    .finding-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--rl);
+      padding: 28px; display: flex; flex-direction: column; gap: 0;
+      transition: border-color var(--t), box-shadow var(--t);
+    }
+    .finding-card:hover { border-color: rgba(88,166,255,0.25); box-shadow: 0 0 0 1px rgba(88,166,255,0.08); }
+    .finding-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+    .finding-num-badge {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+      padding: 3px 8px; border-radius: 4px; flex-shrink: 0; margin-top: 2px;
+    }
+    .finding-num-badge.f1 { background: rgba(56,139,253,0.15); color: #79C0FF; }
+    .finding-num-badge.f2 { background: rgba(248,81,73,0.15); color: #F85149; }
+    .finding-num-badge.f3 { background: rgba(210,153,34,0.15); color: #D29922; }
+    .finding-num-badge.f4 { background: rgba(188,140,255,0.15); color: #BC8CFF; }
+    .finding-card h3 { font-size: 1.08rem; line-height: 1.3; }
+    .finding-crisis {
+      display: inline-block; font-size: 0.72rem; color: var(--amber); font-weight: 500;
+      margin-top: 4px;
+    }
+    .finding-body { display: flex; flex-direction: column; gap: 11px; }
+    .finding-body p { font-size: 0.88rem; }
+    .callout {
+      background: var(--surface-2); border-radius: var(--r); padding: 14px 16px;
+      margin-top: 8px; margin-bottom: 0;
+    }
+    .callout.danger { border-left: 3px solid var(--red); }
+    .callout.warn { border-left: 3px solid var(--amber); }
+    .callout.info { border-left: 3px solid var(--accent); }
+    .callout .big-n { display: block; font-size: 1.5rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; line-height: 1.2; }
+    .callout .big-l { font-size: 0.76rem; color: var(--muted); }
+    .reg-tag { display: inline-block; font-size: 0.68rem; padding: 2px 7px; border-radius: 3px; background: rgba(210,153,34,0.12); color: var(--amber); margin-top: 4px; }
+
+    /* CODE COMPARE */
+    .code-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0 4px; }
+    @media (max-width: 560px) { .code-compare { grid-template-columns: 1fr; } }
+    .code-block { background: var(--bg); border-radius: var(--r); border: 1px solid var(--border); overflow: hidden; }
+    .code-lang { font-family: var(--mono); font-size: 0.68rem; font-weight: 500; padding: 5px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); color: var(--dim); }
+    .code-lang.cypher { color: var(--accent); }
+    .code-block pre { padding: 12px; overflow-x: auto; }
+    .code-block code { background: transparent; padding: 0; font-size: 0.73rem; line-height: 1.75; }
+    /* Syntax: GitHub dark scheme */
+    .kw { color: #FF7B72; } .label { color: #79C0FF; } .rel { color: #3FB950; }
+    .prop { color: #FFA657; } .str { color: #A5D6FF; } .var { color: #E6EDF3; }
+    .fn { color: #D2A8FF; } .cm { color: #8B949E; font-style: italic; } .cm::before { content: '// '; opacity: 0.5; } .op { color: #FF7B72; }
+    .why-block {
+      font-size: 0.8rem; color: var(--muted); background: var(--surface-2);
+      border-radius: var(--r); padding: 11px 14px; border-left: 3px solid var(--border); margin-top: 4px;
+    }
+
+    /* PIPELINE */
+    #pipeline { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 52px 0; }
+    .pipeline-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      background: var(--border); gap: 1px;
+      border: 1px solid var(--border); border-radius: var(--r); overflow: hidden;
+      margin-top: 28px;
+    }
+    @media (max-width: 700px) { .pipeline-grid { grid-template-columns: repeat(2, 1fr); } }
+    .pipe-step { background: var(--bg); padding: 14px 15px; }
+    .pipe-num { font-family: var(--mono); font-size: 0.65rem; color: var(--accent); font-weight: 700; margin-bottom: 4px; }
+    .pipe-name { font-family: var(--mono); font-size: 0.72rem; font-weight: 600; color: var(--text); margin-bottom: 4px; word-break: break-word; }
+    .pipe-detail { font-size: 0.69rem; color: var(--muted); line-height: 1.45; }
+    .pipe-source { display: inline-block; font-size: 0.63rem; margin-top: 6px; padding: 2px 6px; border-radius: 3px; background: rgba(224,149,90,0.12); color: var(--accent); }
+
+    /* HONEST */
+    #honest { padding: 80px 0; }
+    .honest-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 44px; }
+    @media (max-width: 700px) { .honest-grid { grid-template-columns: 1fr; } }
+    .honest-col h3 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .honest-col h3.yes { color: var(--green); }
+    .honest-col h3.no { color: var(--red); }
+    .honest-list { list-style: none; display: flex; flex-direction: column; gap: 9px; }
+    .honest-list li { font-size: 0.86rem; color: var(--muted); padding-left: 18px; position: relative; line-height: 1.55; }
+    .honest-list li::before { content: '—'; position: absolute; left: 0; color: var(--dim); }
+    .honest-note { margin-top: 20px; font-size: 0.83rem; color: var(--dim); font-style: italic; line-height: 1.6; }
+
+    /* FOOTER */
+    .footer { padding: 36px 0; border-top: 1px solid var(--border); }
+    .footer-content { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .footer-left { display: flex; flex-direction: column; gap: 4px; }
+    .footer-title { font-weight: 700; font-size: 0.95rem; }
+    .footer-sub { font-size: 0.76rem; color: var(--dim); }
+    .footer-stack { display: flex; gap: 7px; flex-wrap: wrap; }
+    .stack-tag { font-size: 0.72rem; padding: 3px 9px; background: var(--surface-2); border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
+    .footer-link { font-size: 0.76rem; color: var(--accent); text-decoration: none; }
+    .footer-link:hover { text-decoration: underline; }
+
+    /* SCROLLBAR */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* UTILS */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+    .mt-24 { margin-top: 24px; }
+
+    /* Highlight finding card on selection */
+    .finding-card.highlighted { border-color: rgba(88,166,255,0.35); }
+    .finding-card.f1.highlighted { border-color: rgba(56,139,253,0.4); }
+    .finding-card.f2.highlighted { border-color: rgba(248,81,73,0.4); }
+    .finding-card.f3.highlighted { border-color: rgba(210,153,34,0.4); }
+    .finding-card.f4.highlighted { border-color: rgba(188,140,255,0.4); }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <div class="nav-brand">Credit<span>Graph</span></div>
+    <div class="nav-right">
+      <div class="lang-toggle" role="group" aria-label="Language">
+        <button class="lang-btn active" id="btn-en" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" id="btn-es" onclick="setLang('es')">ES</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-eyebrow" data-i18n="hero_eyebrow">Portfolio Project</div>
+      <h1 data-i18n-html="hero_h1">SQL sees rows.<br>Graphs see <em>risk</em>.</h1>
+
+      <p class="hero-sub" data-i18n="hero_sub">A Mexican bank's loan book is a table. Each row is a borrower, an amount, a status. The rows don't know about each other. The borrowers do. They guarantee each other's loans, sit on each other's boards, own pieces of the same companies. This page walks through four risks that are invisible in the table and obvious in the graph.</p>
+
+      <nav class="page-index" aria-label="Page sections">
+        <ol class="idx-list">
+          <li class="idx-item"><a href="#contrast" class="idx-link"><span class="idx-num">01</span><span data-i18n="idx_contrast">What the table reports</span></a></li>
+          <li class="idx-item"><a href="#findings" class="idx-link"><span class="idx-num">02</span><span data-i18n="idx_findings">Four findings</span></a></li>
+          <li class="idx-item"><a href="#pipeline" class="idx-link"><span class="idx-num">03</span><span data-i18n="idx_pipeline">The pipeline</span></a></li>
+          <li class="idx-item"><a href="#honest" class="idx-link"><span class="idx-num">04</span><span data-i18n="idx_honest">Scope &amp; limitations</span></a></li>
+          <li class="idx-item"><a href="#graph-section" class="idx-link"><span class="idx-num">05</span><span data-i18n="idx_graph">Explore the graph</span></a></li>
+        </ol>
+      </nav>
+    </div>
+  </section>
+
+  <!-- CONTRAST -->
+  <section class="section" id="contrast">
+    <div class="container">
+      <h2 data-i18n="contrast_title">Step 1: What the flat table reports</h2>
+      <p class="dataset-meta" data-i18n="dataset_meta">Dataset: 853 nodes, 726 edges, $200M MXN tracked, 4 structural findings. Live in Neo4J AuraDB.</p>
+      <p class="section-sub" data-i18n="contrast_sub">This is the view a risk analyst opens every morning: 458 loans, a healthy headline NPL, five sectors. Everything an aggregate can tell you is here. What it can't tell you is who is connected to whom.</p>
+
+      <div class="contrast-grid">
+        <!-- LEFT: SQL VIEW -->
+        <div class="contrast-side">
+          <span class="contrast-label" data-i18n="contrast_sql_label">SQL View: What the analyst reports</span>
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-card-n">458</div>
+              <div class="stat-card-label">Total loans</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-n">$200M</div>
+              <div class="stat-card-label">Exposure (MXN)</div>
+            </div>
+            <div class="stat-card ok">
+              <div class="stat-card-n">7.9%</div>
+              <div class="stat-card-label">NPL ratio</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card-n">5</div>
+              <div class="stat-card-label">Sectors ("diversified")</div>
+            </div>
+          </div>
+          <div class="table-mockup">
+            <table>
+              <thead>
+                <tr><th>loan_id</th><th>client</th><th>balance</th><th>status</th><th>score</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>PRE-00313</td><td>CLI-00010</td><td>$87,200</td><td class="status-ok">ACTIVO</td><td>725.8</td></tr>
+                <tr><td>PRE-00127</td><td>CLI-00011</td><td>$132,511</td><td class="status-ok">ACTIVO</td><td>798.2</td></tr>
+                <tr class="row-vencido"><td>PRE-00254</td><td>CLI-00012</td><td>$132,511</td><td class="status-bad">VENCIDO</td><td>649.6</td></tr>
+                <tr><td>PRE-00087</td><td>CLI-00020</td><td>$50,922</td><td class="status-ok">ACTIVO</td><td>710.1</td></tr>
+                <tr><td>PRE-00308</td><td>CLI-00021</td><td>$9,200</td><td class="status-ok">ACTIVO</td><td>695.3</td></tr>
+                <tr class="more-row"><td colspan="5">... 453 more rows</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="contrast-verdict" data-i18n="contrast_verdict_sql">Looks like a healthy portfolio. One past-due loan in five shown. Nothing unusual.</p>
+        </div>
+
+        <!-- DIVIDER -->
+        <div class="contrast-divider">
+          <span class="divider-arrow">&#8594;</span>
+          <span class="divider-but" data-i18n="divider_but">but</span>
+        </div>
+
+        <!-- RIGHT: GRAPH VIEW -->
+        <div class="contrast-side">
+          <span class="contrast-label" data-i18n="contrast_graph_label">Graph View: What the first 3 rows actually look like</span>
+
+          <svg class="mini-graph" viewBox="0 0 320 210" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrowO" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#F0883E"/>
+              </marker>
+              <marker id="arrowR" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#F85149"/>
+              </marker>
+              <filter id="mg-glow">
+                <feGaussianBlur stdDeviation="2.5" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+
+            <!-- LOAN 313 (Homero's own loan, ACTIVO) -->
+            <rect x="7" y="156" width="68" height="22" rx="4" fill="#3FB950" opacity="0.75"/>
+            <text x="41" y="171" text-anchor="middle" fill="white" font-size="8" font-family="Inter, sans-serif">#313 ACTIVO</text>
+
+            <!-- HOMERO (person, good score) -->
+            <circle cx="56" cy="91" r="22" fill="#388BFD" filter="url(#mg-glow)" opacity="0.9"/>
+            <text x="56" y="87" text-anchor="middle" fill="white" font-size="7.5" font-family="Inter, sans-serif">score</text>
+            <text x="56" y="99" text-anchor="middle" fill="white" font-size="9.5" font-weight="bold" font-family="Inter, sans-serif">725</text>
+            <text x="56" y="68" text-anchor="middle" fill="#A89A88" font-size="8.5" font-family="Inter, sans-serif">Homero A.</text>
+
+            <!-- Edge: Homero owns Loan 313 (dashed green, gentle curve) -->
+            <path d="M 49 112 Q 36 130 39 156" stroke="#3FB950" stroke-width="1.5" stroke-dasharray="4,2" fill="none" opacity="0.5"/>
+
+            <!-- LOAN 127 (shared loan, ACTIVO) -->
+            <rect x="134" y="27" width="68" height="22" rx="4" fill="#3FB950" opacity="0.75"/>
+            <text x="168" y="42" text-anchor="middle" fill="white" font-size="8" font-family="Inter, sans-serif">#127 ACTIVO</text>
+
+            <!-- Edge: Homero GARANTIZA Loan 127 (orange arrow, softer curve) -->
+            <path d="M 75 82 Q 107 54 134 40" stroke="#F0883E" stroke-width="2" fill="none" marker-end="url(#arrowO)"/>
+            <text x="100" y="56" text-anchor="middle" fill="#F0883E" font-size="7.5" font-family="Inter, sans-serif" transform="rotate(-24, 100, 56)">GARANTIZA</text>
+
+            <!-- MANUEL (person, good score) -->
+            <circle cx="166" cy="119" r="22" fill="#388BFD" opacity="0.9"/>
+            <text x="166" y="115" text-anchor="middle" fill="white" font-size="7.5" font-family="Inter, sans-serif">score</text>
+            <text x="166" y="127" text-anchor="middle" fill="white" font-size="9.5" font-weight="bold" font-family="Inter, sans-serif">798</text>
+            <text x="166" y="96" text-anchor="middle" fill="#A89A88" font-size="8.5" font-family="Inter, sans-serif">Manuel M.</text>
+
+            <!-- Edge: Manuel owns Loan 127 (dashed green, gentle curve right) -->
+            <path d="M 166 97 Q 173 73 168 49" stroke="#3FB950" stroke-width="1.5" stroke-dasharray="4,2" fill="none" opacity="0.5"/>
+
+            <!-- LOAN 254 (VENCIDO — red!) -->
+            <rect x="246" y="29" width="68" height="22" rx="4" fill="#F85149" opacity="0.9" filter="url(#mg-glow)"/>
+            <text x="280" y="44" text-anchor="middle" fill="white" font-size="8" font-family="Inter, sans-serif">#254 VENCIDO</text>
+
+            <!-- Edge: Manuel GARANTIZA Loan 254 (red arrow, softer curve) -->
+            <path d="M 184 109 Q 226 76 246 42" stroke="#F85149" stroke-width="2" fill="none" marker-end="url(#arrowR)"/>
+            <text x="222" y="71" text-anchor="middle" fill="#F85149" font-size="7.5" font-family="Inter, sans-serif" transform="rotate(-42, 222, 71)">GARANTIZA</text>
+
+            <!-- CECILIA (person, lower score, dim = defaulted borrower) -->
+            <circle cx="280" cy="117" r="22" fill="#388BFD" opacity="0.35"/>
+            <text x="280" y="113" text-anchor="middle" fill="white" font-size="7.5" font-family="Inter, sans-serif">score</text>
+            <text x="280" y="125" text-anchor="middle" fill="white" font-size="9.5" font-weight="bold" font-family="Inter, sans-serif">649</text>
+            <text x="280" y="94" text-anchor="middle" fill="#A89A88" font-size="8.5" font-family="Inter, sans-serif">Cecilia G.</text>
+
+            <!-- Edge: Cecilia owns Loan 254 (dashed red, gentle curve left) -->
+            <path d="M 280 95 Q 273 72 279 50" stroke="#F85149" stroke-width="1.5" stroke-dasharray="4,2" fill="none" opacity="0.6"/>
+
+            <!-- 45 days label -->
+            <text x="281" y="188" text-anchor="middle" fill="#F85149" font-size="8" font-family="Inter, sans-serif">45 days past due</text>
+            <path d="M 281 160 Q 283 169 281 178" stroke="#F85149" stroke-width="1" fill="none" opacity="0.5"/>
+            <circle cx="281" cy="160" r="2" fill="#F85149"/>
+          </svg>
+
+          <p class="contrast-verdict warn" data-i18n="contrast_verdict_graph">
+            Homero has a score of 725 and looks fine. But he guarantees Manuel's loan. Manuel guarantees Cecilia's loan. Cecilia's loan is 45 days past due. Homero's score never saw this coming.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 FINDINGS -->
+  <section class="section" id="findings">
+    <div class="container">
+      <h2 data-i18n="findings_title">The 4 findings SQL can't see</h2>
+      <p class="section-sub" data-i18n="findings_sub">Four questions a loan table cannot answer. Not because SQL is broken. Because the questions are about connections, and a flat table has no language for them.</p>
+
+      <div class="findings-grid">
+
+        <!-- FINDING 1 -->
+        <div class="finding-card f1" id="fc1">
+          <div class="finding-header">
+            <span class="finding-num-badge f1">01</span>
+            <div>
+              <h3 data-i18n="f1_title">The safe client who isn't safe</h3>
+              <span class="finding-crisis" data-i18n="f1_crisis">AIG parallel: guarantee chains on CDO tranches</span>
+            </div>
+          </div>
+
+          <div class="finding-body">
+            <p data-i18n="f1_p1">Homero Aguayo has a bureau score of 725. Well above the threshold. His own loan is current, no past-due days. Every standard metric says he's fine.</p>
+            <p data-i18n="f1_p2">The graph says: Homero guarantees Manuel's loan. Manuel guarantees Cecilia's loan. Cecilia's loan is 45 days past due.</p>
+            <p data-i18n="f1_p3">If Cecilia can't pay, Manuel is liable. If Manuel can't cover it, Homero is liable. His credit score was answering a different question: one about Homero in isolation, not Homero in context.</p>
+            <p data-i18n="f1_p4">In 2008, AIG's guarantee chains on CDO tranches worked exactly this way. The depth of exposure was unknowable until the underlying asset failed.</p>
+            <div class="code-compare">
+              <div class="code-block">
+                <div class="code-lang">SQL: requires depth known at write time</div>
+                <pre><code><span class="cm">hop count hardcoded when query is written</span>
+<span class="cm">chain 3 hops long? this query doesn't exist</span>
+<span class="kw">SELECT</span> c.id_cliente, c.score_buro
+<span class="kw">FROM</span> clientes c
+<span class="kw">JOIN</span> garantias g1 <span class="kw">ON</span> c.id_cliente = g1.id_garante
+<span class="kw">JOIN</span> prestamos p1 <span class="kw">ON</span> g1.id_prestamo = p1.id_prestamo
+<span class="kw">JOIN</span> clientes c2 <span class="kw">ON</span> p1.id_titular = c2.id_cliente
+<span class="kw">JOIN</span> garantias g2 <span class="kw">ON</span> c2.id_cliente = g2.id_garante
+<span class="kw">JOIN</span> prestamos p2 <span class="kw">ON</span> g2.id_prestamo = p2.id_prestamo
+<span class="kw">WHERE</span> p2.estatus = <span class="str">'VENCIDO'</span></code></pre>
+              </div>
+              <div class="code-block">
+                <div class="code-lang cypher">Cypher: depth is runtime</div>
+                <pre><code><span class="kw">MATCH</span> (<span class="var">a</span>:<span class="label">ClienteIndividual</span> {
+  <span class="prop">id_cliente</span>: <span class="str">'CLI-00010'</span>
+})-[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">p1</span>)
+  &lt;-[:<span class="rel">TIENE_PRESTAMO</span>]-(<span class="var">b</span>)
+  -[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">p2</span>)
+  &lt;-[:<span class="rel">TIENE_PRESTAMO</span>]-(<span class="var">c</span>)
+<span class="kw">WHERE</span> <span class="var">p2</span>.<span class="prop">estatus</span> = <span class="str">'VENCIDO'</span>
+<span class="kw">RETURN</span>
+  <span class="var">a</span>.<span class="prop">score_buro</span> <span class="kw">AS</span> guarantor_score,
+  <span class="var">p2</span>.<span class="prop">saldo_vigente_mxn</span> <span class="kw">AS</span> exposure,
+  <span class="var">p2</span>.<span class="prop">dias_mora</span></code></pre>
+              </div>
+            </div>
+            <div class="why-block" data-i18n-html="f1_why">Variable-depth traversal (<code>*1..N</code>) is native in Cypher. SQL requires one JOIN per hop, and the hop count must be decided when writing the query, before you know how deep the exposure actually goes.</div>
+            <div class="callout info">
+              <span class="big-n">$132,511 MXN</span>
+              <span class="big-l" data-i18n="f1_callout">hidden exposure two hops from a client scored 725. invisible in any loan table</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FINDING 2 -->
+        <div class="finding-card f2" id="fc2">
+          <div class="finding-header">
+            <span class="finding-num-badge f2">02</span>
+            <div>
+              <h3 data-i18n="f2_title">Coverage that doesn't exist</h3>
+              <span class="finding-crisis" data-i18n="f2_crisis">AIG parallel: insured tranches AIG had also insured</span>
+            </div>
+          </div>
+
+          <div class="finding-body">
+            <p data-i18n="f2_p1">Three borrowers guarantee each other's loans in a closed loop: A guarantees B's loan, B guarantees C's loan, C guarantees A's loan.</p>
+            <p data-i18n="f2_p2">A risk system checking "does this loan have a guarantor?" returns YES for all three. They look fully covered.</p>
+            <p data-i18n="f2_p3">But the coverage is fiction. If any one of them can't pay, the guarantee activates for someone already exposed to the same failure. Nobody outside the loop is backing anything.</p>
+            <p data-i18n="f2_p4">This is a regulatory violation. CNBV Circular 3/2012 prohibits guarantee structures where coverage is fictitious due to circular dependency.</p>
+            <div class="code-compare">
+              <div class="code-block">
+                <div class="code-lang">SQL: recursive CTE (breaks in practice)</div>
+                <pre><code><span class="cm">postgres only. MySQL breaks here.</span>
+<span class="cm">no cycle guard: stack overflow on real data</span>
+<span class="cm">you still don't know what the exposure is</span>
+<span class="kw">WITH RECURSIVE</span> chain <span class="kw">AS</span> (
+  <span class="kw">SELECT</span> g.id_garante,
+         <span class="fn">ARRAY</span>[g.id_garante] <span class="kw">AS</span> visited
+  <span class="kw">FROM</span> garantias g
+  <span class="kw">UNION ALL</span>
+  <span class="kw">SELECT</span> g2.id_garante,
+         visited || g2.id_garante
+  <span class="kw">FROM</span> garantias g2, chain
+  <span class="kw">WHERE NOT</span> g2.id_garante = <span class="fn">ANY</span>(visited)
+)
+<span class="cm">found the cycle. now what?</span>
+<span class="cm">loan balances are in another table. start over.</span></code></pre>
+              </div>
+              <div class="code-block">
+                <div class="code-lang cypher">Cypher: one pattern</div>
+                <pre><code><span class="kw">MATCH</span> (<span class="var">c1</span>)-[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">p1</span>)
+  &lt;-[:<span class="rel">TIENE_PRESTAMO</span>]-(<span class="var">c2</span>)
+  -[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">p2</span>)
+  &lt;-[:<span class="rel">TIENE_PRESTAMO</span>]-(<span class="var">c3</span>)
+  -[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">p3</span>)
+  &lt;-[:<span class="rel">TIENE_PRESTAMO</span>]-(<span class="var">c1</span>)
+<span class="kw">WHERE</span> <span class="var">c1</span> <span class="op">&lt;&gt;</span> <span class="var">c2</span>
+  <span class="kw">AND</span> <span class="var">c2</span> <span class="op">&lt;&gt;</span> <span class="var">c3</span>
+  <span class="kw">AND</span> <span class="var">c1</span> <span class="op">&lt;&gt;</span> <span class="var">c3</span>
+<span class="kw">RETURN</span> <span class="var">c1</span>, <span class="var">c2</span>, <span class="var">c3</span>,
+  <span class="var">p1</span>.<span class="prop">saldo_vigente_mxn</span>,
+  <span class="var">p2</span>.<span class="prop">saldo_vigente_mxn</span>,
+  <span class="var">p3</span>.<span class="prop">saldo_vigente_mxn</span></code></pre>
+              </div>
+            </div>
+            <div class="why-block" data-i18n="f2_why">A cycle is a structural pattern in Cypher: the path ends at the same node it started. No visited-array tracking needed. SQL recursive CTEs approach this problem from the opposite direction and require explicit cycle-checking at each step.</div>
+            <span class="reg-tag" data-i18n="f2_reg">CNBV Circular 3/2012 violation</span>
+            <div class="callout danger">
+              <span class="big-n">$110,975 MXN</span>
+              <span class="big-l" data-i18n="f2_callout">reported as 100% guaranteed. actual external coverage: 0%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FINDING 3 -->
+        <div class="finding-card f3" id="fc3">
+          <div class="finding-header">
+            <span class="finding-num-badge f3">03</span>
+            <div>
+              <h3 data-i18n="f3_title">One company falls. Five people follow.</h3>
+              <span class="finding-crisis" data-i18n="f3_crisis">Bear Stearns parallel: most interconnected, not largest</span>
+            </div>
+          </div>
+
+          <div class="finding-body">
+            <p data-i18n="f3_p1">HARI MASA SA DE CV is under restructuring. In the loan table, that's one row. In the graph, it's a hub.</p>
+            <p data-i18n="f3_p2">Five shareholders have personal loans with the same bank. Two cross-guarantee each other's personal loans. If HARI MASA collapses, all five lose their equity stake simultaneously. The two cross-guarantors are doubly exposed.</p>
+            <p data-i18n="f3_p3">SQL sees five independent borrowers. The graph sees one interconnected risk cluster where the company's failure is a single correlated event affecting all five at once.</p>
+            <p data-i18n="f3_p4">Bear Stearns in 2008 wasn't the largest bank. It was the most interconnected. Size doesn't predict damage. Topology does.</p>
+            <div class="code-compare">
+              <div class="code-block">
+                <div class="code-lang">SQL: 3 JOINs, static fan-out</div>
+                <pre><code><span class="cm">table names baked in, not discoverable</span>
+<span class="cm">"all connected entities" has no SQL equivalent</span>
+<span class="kw">SELECT</span> c.nombre, p.saldo_vigente_mxn
+<span class="kw">FROM</span> empresas e
+<span class="kw">JOIN</span> accionistas a
+  <span class="kw">ON</span> e.id_empresa = a.id_empresa
+<span class="kw">JOIN</span> clientes c
+  <span class="kw">ON</span> a.id_cliente = c.id_cliente
+<span class="kw">LEFT JOIN</span> prestamos p
+  <span class="kw">ON</span> c.id_cliente = p.id_titular
+<span class="kw">LEFT JOIN</span> garantias g
+  <span class="kw">ON</span> c.id_cliente = g.id_garante
+<span class="kw">WHERE</span> e.id_empresa = <span class="str">'EMP-00031'</span></code></pre>
+              </div>
+              <div class="code-block">
+                <div class="code-lang cypher">Cypher</div>
+                <pre><code><span class="kw">MATCH</span> (<span class="var">e</span>:<span class="label">Empresa</span> {
+  <span class="prop">id_empresa</span>: <span class="str">'EMP-00031'</span>
+})&lt;-[:<span class="rel">ES_ACCIONISTA_DE</span>|<span class="rel">ES_DIRECTOR_DE</span>]-(<span class="var">c</span>)
+<span class="kw">OPTIONAL MATCH</span> (<span class="var">c</span>)-[:<span class="rel">TIENE_PRESTAMO</span>]-&gt;(<span class="var">p</span>)
+<span class="kw">OPTIONAL MATCH</span> (<span class="var">c</span>)-[:<span class="rel">GARANTIZA</span>]-&gt;(<span class="var">g</span>)
+<span class="kw">RETURN</span>
+  <span class="var">c</span>.<span class="prop">nombre_completo</span>,
+  <span class="fn">sum</span>(<span class="var">p</span>.<span class="prop">saldo_vigente_mxn</span>) <span class="kw">AS</span> personal,
+  <span class="fn">sum</span>(<span class="var">g</span>.<span class="prop">saldo_vigente_mxn</span>) <span class="kw">AS</span> guaranteed</code></pre>
+              </div>
+            </div>
+            <div class="why-block" data-i18n="f3_why">OPTIONAL MATCH fan-out in Cypher naturally discovers all connected entities regardless of how many there are. SQL must specify relationship types and table names before execution. The traversal structure is static, not dynamic.</div>
+            <div class="callout warn">
+              <span class="big-n">$4,954,280 MXN</span>
+              <span class="big-l" data-i18n="f3_callout">guarantee exposure correlated through one restructured company's 5 shareholders</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- FINDING 4 -->
+        <div class="finding-card f4" id="fc4">
+          <div class="finding-header">
+            <span class="finding-num-badge f4">04</span>
+            <div>
+              <h3 data-i18n="f4_title">Four companies that are really one risk</h3>
+              <span class="finding-crisis" data-i18n="f4_crisis">Lehman parallel: 7,000 entities, one control group</span>
+            </div>
+          </div>
+
+          <div class="finding-body">
+            <p data-i18n="f4_p1">Emilio Maldonado appears in four separate loan files as a controlling shareholder. The portfolio report shows exposure spread across four companies in three sectors. It looks diversified.</p>
+            <p data-i18n="f4_p2">The graph shows: it's one person. Score 583. Personal income $18,784 MXN/month. If he has a legal problem, a health crisis, or makes one bad strategic decision, all four companies lose their key decision-maker at the same moment.</p>
+            <p data-i18n="f4_p3">Entity-level diversification is an illusion when control is concentrated. SQL sees four borrowers. The graph sees one person.</p>
+            <p data-i18n="f4_p4">Lehman Brothers had 7,000 legal entities across 40 countries. The portfolio looked diversified. When the parent failed, all 7,000 failed at once. This is why the G20 mandated the creation of GLEIF in 2011.</p>
+            <div class="code-compare">
+              <div class="code-block">
+                <div class="code-lang">SQL: self-join to find shared director</div>
+                <pre><code><span class="cm">finds the count. not the exposure.</span>
+<span class="cm">two more JOINs for that. which you haven't written.</span>
+<span class="kw">SELECT</span> a1.id_cliente,
+  <span class="fn">COUNT</span>(<span class="op">DISTINCT</span> a1.id_empresa) <span class="kw">AS</span> n
+<span class="kw">FROM</span> accionistas a1
+<span class="kw">JOIN</span> accionistas a2
+  <span class="kw">ON</span> a1.id_cliente = a2.id_cliente
+  <span class="kw">AND</span> a1.id_empresa <span class="op">&lt;&gt;</span> a2.id_empresa
+<span class="kw">GROUP BY</span> a1.id_cliente
+<span class="kw">HAVING COUNT</span>(<span class="op">DISTINCT</span> a1.id_empresa) &gt;= 2
+<span class="cm">still 2 JOINs short of knowing the actual risk</span></code></pre>
+              </div>
+              <div class="code-block">
+                <div class="code-lang cypher">Cypher: pattern is the query</div>
+                <pre><code><span class="kw">MATCH</span> (<span class="var">c</span>:<span class="label">ClienteIndividual</span>)
+  -[:<span class="rel">ES_ACCIONISTA_DE</span>|<span class="rel">ES_DIRECTOR_DE</span>]-&gt;(<span class="var">e</span>)
+<span class="kw">WITH</span> <span class="var">c</span>, <span class="fn">count</span>(<span class="var">e</span>) <span class="kw">AS</span> n
+<span class="kw">WHERE</span> n &gt;= 2
+<span class="kw">MATCH</span> (<span class="var">c</span>)-[:<span class="rel">ES_ACCIONISTA_DE</span>]-&gt;(<span class="var">e2</span>)
+  -[:<span class="rel">TIENE_PRESTAMO</span>]-&gt;(<span class="var">p</span>)
+<span class="kw">RETURN</span>
+  <span class="var">c</span>.<span class="prop">nombre_completo</span>, n,
+  <span class="fn">sum</span>(<span class="var">p</span>.<span class="prop">saldo_vigente_mxn</span>)
+    <span class="kw">AS</span> true_concentration
+<span class="kw">ORDER BY</span> true_concentration <span class="kw">DESC</span></code></pre>
+              </div>
+            </div>
+            <div class="why-block" data-i18n="f4_why">Shared-controller detection in SQL requires a self-join on the relationship table, then additional joins to aggregate exposure. In Cypher, "find persons connected to multiple companies" is a structural pattern: the relationship is first-class, not a derived fact from table joins. Mexican regulation requires this under CNBV Circular Única de Bancos, Article 73 (personas relacionadas).</div>
+            <div class="callout danger">
+              <span class="big-n">$7,163,560 MXN</span>
+              <span class="big-l" data-i18n="f4_callout">true single-person concentration. SQL reports 4 separate borrowers across 3 sectors</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- .findings-grid -->
+    </div>
+  </section>
+
+  <!-- PIPELINE -->
+  <section id="pipeline">
+    <div class="container">
+      <h2 data-i18n="pipeline_title">The pipeline: 8 scripts, sequential</h2>
+      <p class="section-sub" data-i18n="pipeline_sub">No orchestrator. Each script reads the output of the previous one. Real data sources for ownership topology, synthetic credit layer calibrated to CNBV benchmarks.</p>
+      <div class="pipeline-grid">
+        <div class="pipe-step">
+          <div class="pipe-num">00</div>
+          <div class="pipe-name">acquire_gleif.py</div>
+          <div class="pipe-detail">7,015 MX LEI entities + 287 parent-child edges</div>
+          <span class="pipe-source">GLEIF API (live)</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">01</div>
+          <div class="pipe-name">acquire_psc.py</div>
+          <div class="pipe-detail">600 UK PSC controllers + 3,935 ownership edges</div>
+          <span class="pipe-source">BODS Datasette</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">02</div>
+          <div class="pipe-name">extract_subgraph.py</div>
+          <div class="pipe-detail">NetworkX components → 300 persons, 366 companies</div>
+          <span class="pipe-source">NetworkX</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">03</div>
+          <div class="pipe-name">map_to_creditgraph.py</div>
+          <div class="pipe-detail">Faker MX + lognormal amounts + 4% NPL calibration</div>
+          <span class="pipe-source">Synthetic</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">04</div>
+          <div class="pipe-name">embed_scenarios.py</div>
+          <div class="pipe-detail">5 structural patterns planted: chains, cycles, hubs</div>
+          <span class="pipe-source">Synthetic</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">05</div>
+          <div class="pipe-name">embed_quality.py</div>
+          <div class="pipe-detail">127 quality issues: neg. incomes, dup. CURPs, orphan FKs</div>
+          <span class="pipe-source">Intentional</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">06</div>
+          <div class="pipe-name">generate_neo4j.py</div>
+          <div class="pipe-detail">Validated CSVs + Cypher UNWIND, 26 FK rejections</div>
+          <span class="pipe-source">Validation</span>
+        </div>
+        <div class="pipe-step">
+          <div class="pipe-num">07</div>
+          <div class="pipe-name">load_neo4j.py</div>
+          <div class="pipe-detail">Batch inserts → 853 nodes, 726 edges live in AuraDB</div>
+          <span class="pipe-source">Neo4J AuraDB</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HONEST POSITIONING -->
+  <section class="section" id="honest">
+    <div class="container">
+      <h2 data-i18n="honest_title">What this project is, and what it isn't</h2>
+      <p class="section-sub" data-i18n="honest_sub">These numbers aren't auditable facts. They come from synthetic distributions calibrated to CNBV benchmarks. Each finding is better read as: this kind of exposure exists in real portfolios, and here is how you'd find it.</p>
+      <div class="honest-grid">
+        <div class="honest-col">
+          <h3 class="yes" data-i18n="honest_yes">What it demonstrates</h3>
+          <ul class="honest-list">
+            <li data-i18n="honest_li1">Graph databases make relationship queries structurally different, not just faster: cycle detection, variable-depth traversal, and fan-out are native operations</li>
+            <li data-i18n="honest_li2">The same structural patterns (circular guarantees, hidden concentration) appear in real Mexican banking regulation under CNBV Circular Única de Bancos, Article 73</li>
+            <li data-i18n="honest_li3">Ownership topology from real public sources (UK PSC + GLEIF), not randomly generated graphs</li>
+            <li data-i18n="honest_li4">Data quality issues catalogued from operational experience: negative incomes, duplicate CURPs, orphaned foreign keys</li>
+            <li data-i18n="honest_li5">The method transfers: swap synthetic data for a real loan book, keep the graph schema and Cypher queries, and it runs unchanged</li>
+          </ul>
+        </div>
+        <div class="honest-col">
+          <h3 class="no" data-i18n="honest_no">What it doesn't claim</h3>
+          <ul class="honest-list">
+            <li data-i18n="honest_noli1">Specific MXN amounts are not meaningful: they come from synthetic lognormal distributions</li>
+            <li data-i18n="honest_noli2">LightGBM scores are not validated against real defaults (scoring module is planned, not built)</li>
+            <li data-i18n="honest_noli3">The 7.9% NPL rate does not represent a real Mexican portfolio: it is calibrated to CNBV public benchmarks</li>
+            <li data-i18n="honest_noli4">This is not investment advice or regulatory analysis</li>
+          </ul>
+          <p class="honest-note" data-i18n="honest_note">The difference between this prototype and production is data source and scale, not logic. The UK PSC topology was chosen precisely because real ownership structures (shared directors, nested ownership) cannot be replicated by random generators. You need real corporate control relationships to make graph queries meaningful.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GRAPH EXPLORER -->
+  <section id="graph-section">
+    <div class="container-wide">
+      <div class="graph-header">
+        <div>
+          <h2 data-i18n="graph_title">Explore the portfolio graph</h2>
+          <p class="section-sub" data-i18n="graph_sub">A small slice of the live graph: 29 of the 853 nodes, chosen because each one participates in at least one of the four patterns below. Drag a node, hover for details, click a finding to see just its subgraph.</p>
+        </div>
+        <div class="finding-buttons">
+          <button class="find-btn active-all" data-finding="0" onclick="highlight(0)" data-i18n="graph_btn_all">Show all</button>
+          <button class="find-btn" data-finding="1" onclick="highlight(1)" data-i18n="graph_btn1">01 Guarantee Chain</button>
+          <button class="find-btn" data-finding="2" onclick="highlight(2)" data-i18n="graph_btn2">02 Circular Guarantee</button>
+          <button class="find-btn" data-finding="3" onclick="highlight(3)" data-i18n="graph_btn3">03 Contagion Hub</button>
+          <button class="find-btn" data-finding="4" onclick="highlight(4)" data-i18n="graph_btn4">04 Hidden Concentration</button>
+          <button class="find-btn reset-btn" onclick="resetView()" data-i18n="graph_btn_reset">Reset view</button>
+        </div>
+      </div>
+
+      <div class="graph-container">
+        <svg id="graph-svg"></svg>
+        <div class="node-tooltip" id="tooltip"></div>
+      </div>
+
+      <div class="graph-meta">
+        <div class="graph-legend">
+          <div class="legend-item"><span class="legend-dot person"></span> <span data-i18n="legend_person">Individual client</span></div>
+          <div class="legend-item"><span class="legend-dot company"></span> <span data-i18n="legend_company">Company</span></div>
+          <div class="legend-item"><span class="legend-dot loan-ok"></span> <span data-i18n="legend_loan_ok">Active loan</span></div>
+          <div class="legend-item"><span class="legend-dot loan-bad"></span> <span data-i18n="legend_loan_bad">Defaulted loan</span></div>
+          <div class="legend-item"><span class="legend-dot loan-warn"></span> <span data-i18n="legend_loan_warn">Restructured</span></div>
+        </div>
+        <div class="link-legend">
+          <div class="legend-item"><span class="legend-line dashed"></span> <span data-i18n="legend_owns">owns loan</span></div>
+          <div class="legend-item"><span class="legend-line solid-o"></span> <span data-i18n="legend_guarantees">guarantees</span></div>
+          <div class="legend-item"><span class="legend-line solid-b"></span> <span data-i18n="legend_shareholder">is shareholder / director of</span></div>
+        </div>
+        <span class="graph-hint" data-i18n="graph_hint">Drag nodes &bull; Scroll to zoom &bull; Click finding buttons above</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <div class="footer-title">CreditGraph</div>
+          <div class="footer-sub" data-i18n="footer_sub">Credit risk knowledge graph &bull; Portfolio project</div>
+        </div>
+        <div class="footer-stack">
+          <span class="stack-tag">Neo4J AuraDB</span>
+          <span class="stack-tag">Python</span>
+          <span class="stack-tag">NetworkX</span>
+          <span class="stack-tag">D3.js v7</span>
+          <span class="stack-tag">GLEIF API</span>
+          <span class="stack-tag">UK PSC / BODS</span>
+          <span class="stack-tag">LightGBM</span>
+        </div>
+        <a class="footer-link" href="https://github.com/GonorAndres/graph-relation-db" target="_blank" rel="noopener" data-i18n="footer_github">View on GitHub &#8599;</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+  // ─── i18n ──────────────────────────────────────────────────────────────────
+  const i18n = {
+    en: {
+      hero_eyebrow: 'Portfolio Project',
+      hero_h1: 'SQL sees rows.<br>Graphs see <em>risk</em>.',
+      idx_contrast: 'What the table reports',
+      idx_findings: 'Four findings',
+      idx_pipeline: 'The pipeline',
+      idx_honest: 'Scope & limitations',
+      idx_graph: 'Explore the graph',
+      hero_sub: "A Mexican bank's loan book is a table. Each row is a borrower, an amount, a status. The rows don\u2019t know about each other. The borrowers do. They guarantee each other\u2019s loans, sit on each other\u2019s boards, own pieces of the same companies. This page walks through four risks that are invisible in the table and obvious in the graph.",
+      contrast_title: 'Step 1: What the flat table reports',
+      dataset_meta: 'Dataset: 853 nodes, 726 edges, $200M MXN tracked, 4 structural findings. Live in Neo4J AuraDB.',
+      contrast_sub: "This is the view a risk analyst opens every morning: 458 loans, a healthy headline NPL, five sectors. Everything an aggregate can tell you is here. What it can\u2019t tell you is who is connected to whom.",
+      contrast_sql_label: 'SQL View: What the analyst reports',
+      contrast_verdict_sql: 'Looks like a healthy portfolio. One past-due loan in five shown. Nothing unusual.',
+      contrast_graph_label: 'Graph View: What the first 3 rows actually look like',
+      contrast_verdict_graph: "Homero has a score of 725 and looks fine. But he guarantees Manuel\u2019s loan. Manuel guarantees Cecilia\u2019s loan. Cecilia\u2019s loan is 45 days past due. Homero\u2019s score never saw this coming.",
+      divider_but: 'but',
+      graph_title: 'Explore the portfolio graph',
+      graph_sub: "A small slice of the live graph: 29 of the 853 nodes, chosen because each one participates in at least one of the four patterns below. Drag a node, hover for details, click a finding to see just its subgraph.",
+      graph_btn_all: 'Show all',
+      graph_btn1: '01 Guarantee Chain',
+      graph_btn2: '02 Circular Guarantee',
+      graph_btn3: '03 Contagion Hub',
+      graph_btn4: '04 Hidden Concentration',
+      graph_btn_reset: 'Reset view',
+      legend_person: 'Individual client',
+      legend_company: 'Company',
+      legend_loan_ok: 'Active loan',
+      legend_loan_bad: 'Defaulted loan',
+      legend_loan_warn: 'Restructured',
+      legend_owns: 'owns loan',
+      legend_guarantees: 'guarantees',
+      legend_shareholder: 'is shareholder / director of',
+      graph_hint: 'Drag nodes \u2022 Scroll to zoom \u2022 Click finding buttons above',
+      findings_title: "The 4 findings SQL can't see",
+      findings_sub: "Four questions a loan table cannot answer. Not because SQL is broken. Because the questions are about connections, and a flat table has no language for them.",
+      f1_title: "The safe client who isn't safe",
+      f1_crisis: 'AIG parallel: guarantee chains on CDO tranches',
+      f1_p1: 'Homero Aguayo has a bureau score of 725. Well above the threshold. His own loan is current, no past-due days. Every standard metric says he\u2019s fine.',
+      f1_p2: 'The graph says: Homero guarantees Manuel\u2019s loan. Manuel guarantees Cecilia\u2019s loan. Cecilia\u2019s loan is 45 days past due.',
+      f1_p3: 'If Cecilia can\u2019t pay, Manuel is liable. If Manuel can\u2019t cover it, Homero is liable. His credit score was answering a different question: one about Homero in isolation, not Homero in context.',
+      f1_p4: 'In 2008, AIG\u2019s guarantee chains on CDO tranches worked exactly this way. The depth of exposure was unknowable until the underlying asset failed.',
+      f1_why: 'Variable-depth traversal (<code>*1..N</code>) is native in Cypher. SQL requires one JOIN per hop, and the hop count must be decided when writing the query, before you know how deep the exposure actually goes.',
+      f1_callout: 'hidden exposure two hops from a client scored 725. invisible in any loan table',
+      f2_title: "Coverage that doesn't exist",
+      f2_crisis: 'AIG parallel: insured tranches AIG had also insured',
+      f2_p1: "Three borrowers guarantee each other's loans in a closed loop: A guarantees B\u2019s loan, B guarantees C\u2019s loan, C guarantees A\u2019s loan.",
+      f2_p2: 'A risk system checking \u201cdoes this loan have a guarantor?\u201d returns YES for all three. They look fully covered.',
+      f2_p3: 'But the coverage is fiction. If any one of them can\u2019t pay, the guarantee activates for someone already exposed to the same failure. Nobody outside the loop is backing anything.',
+      f2_p4: 'This is a regulatory violation. CNBV Circular 3/2012 prohibits guarantee structures where coverage is fictitious due to circular dependency.',
+      f2_why: 'A cycle is a structural pattern in Cypher: the path ends at the same node it started. No visited-array tracking needed. SQL recursive CTEs approach this problem from the opposite direction and require explicit cycle-checking at each step.',
+      f2_reg: 'CNBV Circular 3/2012 violation',
+      f2_callout: 'reported as 100% guaranteed. actual external coverage: 0%',
+      f3_title: 'One company falls. Five people follow.',
+      f3_crisis: 'Bear Stearns parallel: most interconnected, not largest',
+      f3_p1: "HARI MASA SA DE CV is under restructuring. In the loan table, that\u2019s one row. In the graph, it\u2019s a hub.",
+      f3_p2: 'Five shareholders have personal loans with the same bank. Two cross-guarantee each other\u2019s personal loans. If HARI MASA collapses, all five lose their equity stake simultaneously. The two cross-guarantors are doubly exposed.',
+      f3_p3: "SQL sees five independent borrowers. The graph sees one interconnected risk cluster where the company\u2019s failure is a single correlated event affecting all five at once.",
+      f3_p4: 'Bear Stearns in 2008 wasn\u2019t the largest bank. It was the most interconnected. Size doesn\u2019t predict damage. Topology does.',
+      f3_why: 'OPTIONAL MATCH fan-out in Cypher naturally discovers all connected entities regardless of how many there are. SQL must specify relationship types and table names before execution. The traversal structure is static, not dynamic.',
+      f3_callout: "guarantee exposure correlated through one restructured company\u2019s 5 shareholders",
+      f4_title: 'Four companies that are really one risk',
+      f4_crisis: 'Lehman parallel: 7,000 entities, one control group',
+      f4_p1: 'Emilio Maldonado appears in four separate loan files as a controlling shareholder. The portfolio report shows exposure spread across four companies in three sectors. It looks diversified.',
+      f4_p2: 'The graph shows: it\u2019s one person. Score 583. Personal income $18,784 MXN/month. If he has a legal problem, a health crisis, or makes one bad strategic decision, all four companies lose their key decision-maker at the same moment.',
+      f4_p3: 'Entity-level diversification is an illusion when control is concentrated. SQL sees four borrowers. The graph sees one person.',
+      f4_p4: 'Lehman Brothers had 7,000 legal entities across 40 countries. The portfolio looked diversified. When the parent failed, all 7,000 failed at once. This is why the G20 mandated the creation of GLEIF in 2011.',
+      f4_why: 'Shared-controller detection in SQL requires a self-join on the relationship table, then additional joins to aggregate exposure. In Cypher, \u201cfind persons connected to multiple companies\u201d is a structural pattern: the relationship is first-class, not a derived fact from table joins. Mexican regulation requires this under CNBV Circular \u00danica de Bancos, Article 73 (personas relacionadas).',
+      f4_callout: 'true single-person concentration. SQL reports 4 separate borrowers across 3 sectors',
+      pipeline_title: 'The pipeline: 8 scripts, sequential',
+      pipeline_sub: 'No orchestrator. Each script reads the output of the previous one. Real data sources for ownership topology, synthetic credit layer calibrated to CNBV benchmarks.',
+      honest_title: "What this project is, and what it isn't",
+      honest_sub: "These numbers aren\u2019t auditable facts. They come from synthetic distributions calibrated to CNBV benchmarks. Each finding is better read as: this kind of exposure exists in real portfolios, and here is how you\u2019d find it.",
+      honest_yes: 'What it demonstrates',
+      honest_no: "What it doesn't claim",
+      honest_li1: 'Graph databases make relationship queries structurally different, not just faster: cycle detection, variable-depth traversal, and fan-out are native operations',
+      honest_li2: 'The same structural patterns (circular guarantees, hidden concentration) appear in real Mexican banking regulation under CNBV Circular \u00danica de Bancos, Article 73',
+      honest_li3: 'Ownership topology from real public sources (UK PSC + GLEIF), not randomly generated graphs',
+      honest_li4: 'Data quality issues catalogued from operational experience: negative incomes, duplicate CURPs, orphaned foreign keys',
+      honest_li5: 'The method transfers: swap synthetic data for a real loan book, keep the graph schema and Cypher queries, and it runs unchanged',
+      honest_noli1: 'Specific MXN amounts are not meaningful: they come from synthetic lognormal distributions',
+      honest_noli2: 'LightGBM scores are not validated against real defaults (scoring module is planned, not built)',
+      honest_noli3: 'The 7.9% NPL rate does not represent a real Mexican portfolio: it is calibrated to CNBV public benchmarks',
+      honest_noli4: 'This is not investment advice or regulatory analysis',
+      honest_note: 'The difference between this prototype and production is data source and scale, not logic. The UK PSC topology was chosen precisely because real ownership structures (shared directors, nested ownership) cannot be replicated by random generators. You need real corporate control relationships to make graph queries meaningful.',
+      footer_sub: 'Credit risk knowledge graph \u2022 Portfolio project',
+      footer_github: 'View on GitHub \u2197',
+      tt_type: 'Type',
+      tt_score: 'Bureau score',
+      tt_status: 'Status',
+      tt_finding: 'Finding',
+      tt_individual: 'Individual',
+      tt_company: 'Company',
+      tt_loan: 'Loan',
+      fname1: 'Guarantee Chain',
+      fname2: 'Circular Guarantee',
+      fname3: 'Contagion Hub',
+      fname4: 'Hidden Concentration'
+    },
+    es: {
+      hero_eyebrow: 'Proyecto de Portafolio',
+      hero_h1: 'SQL ve filas.<br>Los grafos ven el <em>riesgo</em>.',
+      idx_contrast: 'Lo que reporta la tabla',
+      idx_findings: 'Cuatro hallazgos',
+      idx_pipeline: 'El pipeline',
+      idx_honest: 'Alcance y limitaciones',
+      idx_graph: 'Explorar el grafo',
+      hero_sub: 'La cartera de cr\u00e9ditos de un banco mexicano es una tabla. Cada fila es un acreditado, un monto, un estado. Las filas no se conocen entre s\u00ed. Los acreditados, s\u00ed. Se garantizan cr\u00e9ditos, comparten consejos de administraci\u00f3n, son due\u00f1os de pedazos de las mismas empresas. Esta p\u00e1gina recorre cuatro riesgos invisibles en la tabla y obvios en el grafo.',
+      contrast_title: 'Paso 1: Lo que reporta la tabla plana',
+      dataset_meta: 'Dataset: 853 nodos, 726 aristas, $200M MXN rastreados, 4 hallazgos estructurales. En vivo en Neo4J AuraDB.',
+      contrast_sub: 'Esta es la vista que un analista de riesgo abre cada ma\u00f1ana: 458 cr\u00e9ditos, un NPL titular sano, cinco sectores. Todo lo que un agregado puede decirte est\u00e1 aqu\u00ed. Lo que no puede decirte es qui\u00e9n est\u00e1 conectado con qui\u00e9n.',
+      contrast_sql_label: 'Vista SQL: Lo que reporta el analista',
+      contrast_verdict_sql: 'Parece una cartera sana. Un cr\u00e9dito vencido de cada cinco. Nada fuera de lo ordinario.',
+      contrast_graph_label: 'Vista del Grafo: C\u00f3mo se ven realmente las primeras 3 filas',
+      contrast_verdict_graph: 'Homero tiene score de 725 y parece estar bien. Pero garantiza el cr\u00e9dito de Manuel. Manuel garantiza el cr\u00e9dito de Cecilia. El cr\u00e9dito de Cecilia tiene 45 d\u00edas de mora. El score de Homero nunca vio esto venir.',
+      divider_but: 'pero',
+      graph_title: 'Explorar el grafo del portafolio',
+      graph_sub: 'Una peque\u00f1a rebanada del grafo en vivo: 29 de los 853 nodos, elegidos porque cada uno participa en al menos uno de los cuatro patrones de abajo. Arrastra un nodo, pasa el cursor para ver detalles, haz clic en un hallazgo para ver solo su subgrafo.',
+      graph_btn_all: 'Mostrar todo',
+      graph_btn1: '01 Cadena de Garant\u00edas',
+      graph_btn2: '02 Garant\u00eda Circular',
+      graph_btn3: '03 Hub de Contagio',
+      graph_btn4: '04 Concentraci\u00f3n Oculta',
+      graph_btn_reset: 'Restablecer vista',
+      legend_person: 'Cliente individual',
+      legend_company: 'Empresa',
+      legend_loan_ok: 'Cr\u00e9dito activo',
+      legend_loan_bad: 'Cr\u00e9dito vencido',
+      legend_loan_warn: 'Reestructurado',
+      legend_owns: 'tiene cr\u00e9dito',
+      legend_guarantees: 'garantiza',
+      legend_shareholder: 'es accionista / director de',
+      graph_hint: 'Arrastra nodos \u2022 Scroll para zoom \u2022 Haz clic en los botones de hallazgo',
+      findings_title: 'Los 4 hallazgos que SQL no puede ver',
+      findings_sub: 'Cuatro preguntas que una tabla de cr\u00e9ditos no puede responder. No porque SQL est\u00e9 roto. Porque las preguntas son sobre conexiones, y una tabla plana no tiene lenguaje para ellas.',
+      f1_title: 'El cliente sano que no lo est\u00e1',
+      f1_crisis: 'Paralelo AIG: cadenas de garant\u00edas en tramos CDO',
+      f1_p1: 'Homero Aguayo tiene un score de bur\u00f3 de 725. Muy por encima del umbral. Su propio cr\u00e9dito est\u00e1 al corriente, sin d\u00edas de mora. Cada m\u00e9trica est\u00e1ndar dice que est\u00e1 bien.',
+      f1_p2: 'El grafo dice: Homero garantiza el cr\u00e9dito de Manuel. Manuel garantiza el cr\u00e9dito de Cecilia. El cr\u00e9dito de Cecilia tiene 45 d\u00edas de mora.',
+      f1_p3: 'Si Cecilia no puede pagar, Manuel es responsable. Si Manuel no puede cubrir, Homero es responsable. Su score de cr\u00e9dito respond\u00eda una pregunta diferente: sobre Homero en aislamiento, no Homero en contexto.',
+      f1_p4: 'En 2008, las cadenas de garant\u00edas de AIG sobre tramos CDO funcionaron exactamente as\u00ed. La profundidad de la exposici\u00f3n era incognoscible hasta que fall\u00f3 el activo subyacente.',
+      f1_why: 'El recorrido de profundidad variable (<code>*1..N</code>) es nativo en Cypher. SQL requiere un JOIN por salto, y el n\u00famero de saltos debe decidirse al escribir la consulta, antes de saber qu\u00e9 tan profunda es la exposici\u00f3n.',
+      f1_callout: 'exposici\u00f3n oculta a dos saltos de un cliente con score 725. invisible en cualquier tabla de cr\u00e9ditos',
+      f2_title: 'Cobertura que no existe',
+      f2_crisis: 'Paralelo AIG: tramos asegurados que AIG tambi\u00e9n asegur\u00f3',
+      f2_p1: 'Tres acreditados se garantizan los cr\u00e9ditos entre s\u00ed en un ciclo cerrado: A garantiza el cr\u00e9dito de B, B garantiza el cr\u00e9dito de C, C garantiza el cr\u00e9dito de A.',
+      f2_p2: 'Un sistema de riesgo que pregunta \u201c\u00bftiene este cr\u00e9dito un garante?\u201d responde S\u00cd para los tres. Parecen totalmente cubiertos.',
+      f2_p3: 'Pero la cobertura es ficticia. Si cualquiera de ellos no puede pagar, la garant\u00eda se activa para alguien que ya est\u00e1 expuesto al mismo fallo. Nadie fuera del ciclo est\u00e1 respaldando nada.',
+      f2_p4: 'Esto es una violaci\u00f3n regulatoria. La Circular CNBV 3/2012 proh\u00edbe estructuras de garant\u00eda donde la cobertura es ficticia por dependencia circular.',
+      f2_why: 'Un ciclo es un patr\u00f3n estructural en Cypher: la ruta termina en el mismo nodo en que empez\u00f3. No se necesita seguimiento de nodos visitados. Los CTEs recursivos de SQL abordan este problema desde la direcci\u00f3n opuesta y requieren verificaci\u00f3n expl\u00edcita de ciclos en cada paso.',
+      f2_reg: 'Violaci\u00f3n Circular CNBV 3/2012',
+      f2_callout: 'reportado como 100% garantizado. cobertura externa real: 0%',
+      f3_title: 'Una empresa cae. Cinco personas la siguen.',
+      f3_crisis: 'Paralelo Bear Stearns: m\u00e1s interconectado, no el m\u00e1s grande',
+      f3_p1: 'HARI MASA SA DE CV est\u00e1 en reestructuraci\u00f3n. En la tabla de cr\u00e9ditos, eso es una fila. En el grafo, es un hub.',
+      f3_p2: 'Cinco accionistas tienen cr\u00e9ditos personales con el mismo banco. Dos se garantizan mutuamente los cr\u00e9ditos personales. Si HARI MASA colapsa, los cinco pierden su participaci\u00f3n accionaria simult\u00e1neamente. Los dos co-garantes est\u00e1n doblemente expuestos.',
+      f3_p3: 'SQL ve cinco acreditados independientes. El grafo ve un cl\u00faster de riesgo interconectado donde el fracaso de la empresa es un evento correlacionado \u00fanico que afecta a los cinco al mismo tiempo.',
+      f3_p4: 'Bear Stearns en 2008 no era el banco m\u00e1s grande. Era el m\u00e1s interconectado. El tama\u00f1o no predice el da\u00f1o. La topolog\u00eda s\u00ed.',
+      f3_why: 'El fan-out de OPTIONAL MATCH en Cypher descubre naturalmente todas las entidades conectadas sin importar cu\u00e1ntas sean. SQL debe especificar tipos de relaci\u00f3n y nombres de tabla antes de la ejecuci\u00f3n. La estructura de recorrido es est\u00e1tica, no din\u00e1mica.',
+      f3_callout: 'exposici\u00f3n en garant\u00edas correlacionada a trav\u00e9s de los 5 accionistas de una empresa reestructurada',
+      f4_title: 'Cuatro empresas que en realidad son un solo riesgo',
+      f4_crisis: 'Paralelo Lehman: 7,000 entidades, un grupo de control',
+      f4_p1: 'Emilio Maldonado aparece en cuatro expedientes de cr\u00e9dito separados como accionista controlador. El reporte del portafolio muestra exposici\u00f3n distribuida en cuatro empresas de tres sectores. Parece diversificado.',
+      f4_p2: 'El grafo muestra: es una persona. Score 583. Ingreso personal $18,784 MXN/mes. Si tiene un problema legal, una crisis de salud o toma una mala decisi\u00f3n estrat\u00e9gica, las cuatro empresas pierden a su tomador de decisiones clave al mismo momento.',
+      f4_p3: 'La diversificaci\u00f3n a nivel entidad es una ilusi\u00f3n cuando el control est\u00e1 concentrado. SQL ve cuatro acreditados. El grafo ve una persona.',
+      f4_p4: 'Lehman Brothers ten\u00eda 7,000 entidades legales en 40 pa\u00edses. El portafolio parec\u00eda diversificado. Cuando la matriz fall\u00f3, las 7,000 fallaron al mismo tiempo. Por eso el G20 mandat\u00f3 la creaci\u00f3n de GLEIF en 2011.',
+      f4_why: 'La detecci\u00f3n de controlador compartido en SQL requiere un self-join en la tabla de relaciones, m\u00e1s joins adicionales para agregar exposici\u00f3n. En Cypher, \u201cencontrar personas conectadas a m\u00faltiples empresas\u201d es un patr\u00f3n estructural: la relaci\u00f3n es de primera clase, no un hecho derivado de joins de tablas. La regulaci\u00f3n mexicana lo exige bajo la Circular \u00danica de Bancos CNBV, Art\u00edculo 73 (personas relacionadas).',
+      f4_callout: 'concentraci\u00f3n real en una sola persona. SQL reporta 4 acreditados separados en 3 sectores',
+      pipeline_title: 'El pipeline: 8 scripts, secuencial',
+      pipeline_sub: 'Sin orquestador. Cada script lee la salida del anterior. Fuentes de datos reales para la topolog\u00eda de propiedad, capa de cr\u00e9dito sint\u00e9tica calibrada a benchmarks CNBV.',
+      honest_title: 'Lo que este proyecto es, y lo que no es',
+      honest_sub: 'Estos n\u00fameros no son hechos auditables. Provienen de distribuciones sint\u00e9ticas calibradas a benchmarks CNBV. Cada hallazgo se lee mejor como: este tipo de exposici\u00f3n existe en portafolios reales, y as\u00ed es como la encontrar\u00edas.',
+      honest_yes: 'Lo que demuestra',
+      honest_no: 'Limitaciones reales',
+      honest_li1: 'Las bases de datos de grafos hacen las consultas de relaciones estructuralmente diferentes, no solo m\u00e1s r\u00e1pidas: detecci\u00f3n de ciclos, recorrido de profundidad variable y fan-out son operaciones nativas',
+      honest_li2: 'Los mismos patrones estructurales (garant\u00edas circulares, concentraci\u00f3n oculta) aparecen en la regulaci\u00f3n bancaria mexicana bajo la Circular \u00danica de Bancos CNBV, Art\u00edculo 73',
+      honest_li3: 'Topolog\u00eda de propiedad de fuentes p\u00fablicas reales (UK PSC + GLEIF), no grafos generados aleatoriamente',
+      honest_li4: 'Problemas de calidad de datos catalogados desde experiencia operativa: ingresos negativos, CURPs duplicados, llaves for\u00e1neas hu\u00e9rfanas',
+      honest_li5: 'El m\u00e9todo es transferible: intercambia datos sint\u00e9ticos por una cartera real, mant\u00e9n el esquema de grafo y las consultas Cypher, y funciona sin cambios',
+      honest_noli1: 'Los montos espec\u00edficos en MXN no son significativos: provienen de distribuciones lognormales sint\u00e9ticas',
+      honest_noli2: 'Los scores LightGBM no est\u00e1n validados contra incumplimientos reales (m\u00f3dulo de scoring planeado, no construido)',
+      honest_noli3: 'La tasa NPL de 7.9% no representa un portafolio mexicano real: est\u00e1 calibrada a benchmarks p\u00fablicos CNBV',
+      honest_noli4: 'Esto no es asesor\u00eda de inversi\u00f3n ni an\u00e1lisis regulatorio',
+      honest_note: 'La diferencia entre este prototipo y producci\u00f3n es la fuente de datos y la escala, no la l\u00f3gica. La topolog\u00eda UK PSC fue elegida precisamente porque las estructuras de propiedad reales (directores compartidos, propiedad anidada) no pueden replicarse con generadores aleatorios. Necesitas relaciones de control corporativo reales para que las consultas de grafo sean significativas.',
+      footer_sub: 'Grafo de conocimiento de riesgo crediticio \u2022 Proyecto de portafolio',
+      footer_github: 'Ver en GitHub \u2197',
+      tt_type: 'Tipo',
+      tt_score: 'Score de bur\u00f3',
+      tt_status: 'Estado',
+      tt_finding: 'Hallazgo',
+      tt_individual: 'Individual',
+      tt_company: 'Empresa',
+      tt_loan: 'Cr\u00e9dito',
+      fname1: 'Cadena de Garant\u00edas',
+      fname2: 'Garant\u00eda Circular',
+      fname3: 'Hub de Contagio',
+      fname4: 'Concentraci\u00f3n Oculta'
+    }
+  };
+
+  let currentLang = 'en';
+
+  function setLang(lang) {
+    currentLang = lang;
+    document.documentElement.lang = lang;
+    document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+    document.getElementById('btn-es').classList.toggle('active', lang === 'es');
+    document.querySelectorAll('[data-i18n]').forEach(function(el) {
+      var key = el.dataset.i18n;
+      if (i18n[lang][key] !== undefined) el.textContent = i18n[lang][key];
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(function(el) {
+      var key = el.dataset.i18nHtml;
+      if (i18n[lang][key] !== undefined) el.innerHTML = i18n[lang][key];
+    });
+    localStorage.setItem('creditgraph-lang', lang);
+  }
+
+  // ─── GRAPH DATA ────────────────────────────────────────────────────────────
+  const nodes = [
+    // Finding 1: Guarantee Chain
+    { id: 'CLI-00010', label: 'Homero Aguayo', type: 'person', score: 725.8, finding: 1 },
+    { id: 'CLI-00011', label: 'Manuel Molina', type: 'person', score: 798.2, finding: 1 },
+    { id: 'CLI-00012', label: 'Cecilia Galv\u00e1n', type: 'person', score: 649.6, estatus: 'VENCIDO', finding: 1 },
+    { id: 'PRE-00127', label: 'Loan #127', type: 'loan', estatus: 'ACTIVO', finding: 1 },
+    { id: 'PRE-00254', label: 'Loan #254', type: 'loan', estatus: 'VENCIDO', finding: 1 },
+    { id: 'PRE-00313', label: 'Loan #313', type: 'loan', estatus: 'ACTIVO', finding: 1 },
+
+    // Finding 2: Circular Guarantee
+    { id: 'CLI-00020', label: 'Juana Ledesma', type: 'person', finding: 2 },
+    { id: 'CLI-00021', label: 'Soledad Gil', type: 'person', finding: 2 },
+    { id: 'CLI-00022', label: '\u00c1ng\u00e9lica Gonzales', type: 'person', finding: 2 },
+    { id: 'PRE-00087', label: 'Loan #087', type: 'loan', estatus: 'ACTIVO', finding: 2 },
+    { id: 'PRE-00230', label: 'Loan #230', type: 'loan', estatus: 'ACTIVO', finding: 2 },
+    { id: 'PRE-00308', label: 'Loan #308', type: 'loan', estatus: 'ACTIVO', finding: 2 },
+
+    // Finding 3: Contagion Hub
+    { id: 'EMP-00031', label: 'HARI MASA SA DE CV', type: 'company', estatus: 'REESTRUCTURADO', finding: 3 },
+    { id: 'CLI-00194', label: 'Gabino Aparicio', type: 'person', finding: 3 },
+    { id: 'CLI-00222', label: 'Laura Jasso', type: 'person', finding: 3 },
+    { id: 'CLI-00030', label: 'Dolores Valverde', type: 'person', finding: 3 },
+    { id: 'CLI-00031', label: 'Judith Corral', type: 'person', finding: 3 },
+    { id: 'CLI-00032', label: 'Rub\u00e9n Gamez', type: 'person', finding: 3 },
+    { id: 'PRE-00389', label: 'Loan #389', type: 'loan', estatus: 'REESTRUCTURADO', finding: 3 },
+
+    // Finding 4: Hidden Concentration
+    { id: 'CLI-00298', label: 'Emilio Maldonado', type: 'person', score: 583.3, finding: 4 },
+    { id: 'EMP-00076', label: 'MAQUILACERO', type: 'company', finding: 4 },
+    { id: 'EMP-00071', label: 'FUERZA Y ENERGIA', type: 'company', finding: 4 },
+    { id: 'EMP-00074', label: 'M. HOLLAND LATAM', type: 'company', finding: 4 },
+    { id: 'EMP-00078', label: 'CORP. FREMING', type: 'company', finding: 4 },
+    { id: 'PRE-00392', label: 'Loan #392', type: 'loan', estatus: 'REESTRUCTURADO', finding: 4 },
+    { id: 'PRE-00449', label: 'Loan #449', type: 'loan', estatus: 'REESTRUCTURADO', finding: 4 },
+    { id: 'PRE-00448', label: 'Loan #448', type: 'loan', estatus: 'ACTIVO', finding: 4 },
+    { id: 'PRE-00342', label: 'Loan #342', type: 'loan', estatus: 'ACTIVO', finding: 4 },
+  ];
+
+  const links = [
+    // Finding 1
+    { source: 'CLI-00010', target: 'PRE-00313', type: 'TIENE_PRESTAMO', finding: 1 },
+    { source: 'CLI-00010', target: 'PRE-00127', type: 'GARANTIZA', finding: 1 },
+    { source: 'CLI-00011', target: 'PRE-00127', type: 'TIENE_PRESTAMO', finding: 1 },
+    { source: 'CLI-00011', target: 'PRE-00254', type: 'GARANTIZA', finding: 1 },
+    { source: 'CLI-00012', target: 'PRE-00254', type: 'TIENE_PRESTAMO', finding: 1 },
+
+    // Finding 2 (circular)
+    { source: 'CLI-00020', target: 'PRE-00308', type: 'TIENE_PRESTAMO', finding: 2 },
+    { source: 'CLI-00022', target: 'PRE-00308', type: 'GARANTIZA', finding: 2 },
+    { source: 'CLI-00021', target: 'PRE-00087', type: 'TIENE_PRESTAMO', finding: 2 },
+    { source: 'CLI-00020', target: 'PRE-00087', type: 'GARANTIZA', finding: 2 },
+    { source: 'CLI-00022', target: 'PRE-00230', type: 'TIENE_PRESTAMO', finding: 2 },
+    { source: 'CLI-00021', target: 'PRE-00230', type: 'GARANTIZA', finding: 2 },
+
+    // Finding 3
+    { source: 'EMP-00031', target: 'PRE-00389', type: 'TIENE_PRESTAMO', finding: 3 },
+    { source: 'CLI-00194', target: 'EMP-00031', type: 'ES_ACCIONISTA_DE', finding: 3 },
+    { source: 'CLI-00222', target: 'EMP-00031', type: 'ES_ACCIONISTA_DE', finding: 3 },
+    { source: 'CLI-00030', target: 'EMP-00031', type: 'ES_ACCIONISTA_DE', finding: 3 },
+    { source: 'CLI-00031', target: 'EMP-00031', type: 'ES_ACCIONISTA_DE', finding: 3 },
+    { source: 'CLI-00032', target: 'EMP-00031', type: 'ES_ACCIONISTA_DE', finding: 3 },
+
+    // Finding 4
+    { source: 'CLI-00298', target: 'EMP-00076', type: 'ES_ACCIONISTA_DE', finding: 4 },
+    { source: 'CLI-00298', target: 'EMP-00071', type: 'ES_ACCIONISTA_DE', finding: 4 },
+    { source: 'CLI-00298', target: 'EMP-00074', type: 'ES_ACCIONISTA_DE', finding: 4 },
+    { source: 'CLI-00298', target: 'EMP-00078', type: 'ES_ACCIONISTA_DE', finding: 4 },
+    { source: 'EMP-00076', target: 'PRE-00392', type: 'TIENE_PRESTAMO', finding: 4 },
+    { source: 'EMP-00078', target: 'PRE-00449', type: 'TIENE_PRESTAMO', finding: 4 },
+    { source: 'EMP-00074', target: 'PRE-00448', type: 'TIENE_PRESTAMO', finding: 4 },
+    { source: 'EMP-00071', target: 'PRE-00342', type: 'TIENE_PRESTAMO', finding: 4 },
+  ];
+
+  // ─── D3 GRAPH ──────────────────────────────────────────────────────────────
+  var zoomBehavior, svgOuter;
+
+  (function initGraph() {
+    const container = document.getElementById('graph-svg').parentElement;
+    const W = container.clientWidth;
+    const H = container.clientHeight;
+
+    const svg = d3.select('#graph-svg');
+    svgOuter = svg;
+
+    // Glow filter
+    const defs = svg.append('defs');
+    const glow = defs.append('filter').attr('id', 'node-glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+    const feMerge = glow.append('feMerge');
+    feMerge.append('feMergeNode').attr('in', 'blur');
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+    // Arrow markers per finding
+    const arrowColors = { 1: '#388BFD', 2: '#F85149', 3: '#D29922', 4: '#BC8CFF', 0: '#8B949E' };
+    Object.entries(arrowColors).forEach(([f, color]) => {
+      defs.append('marker')
+        .attr('id', 'arrow-f' + f)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 9).attr('refY', 5)
+        .attr('markerWidth', 5).attr('markerHeight', 5)
+        .attr('orient', 'auto')
+        .append('path').attr('d', 'M0,0 L10,5 L0,10 Z').attr('fill', color);
+    });
+
+    // Zoom layer
+    const g = svg.append('g').attr('class', 'zoom-layer');
+    zoomBehavior = d3.zoom().scaleExtent([0.25, 3])
+      .on('zoom', e => g.attr('transform', e.transform));
+    svg.call(zoomBehavior);
+
+    // Seed initial positions by finding quadrant
+    const quadrant = {
+      1: { x: W * 0.28, y: H * 0.35 },
+      2: { x: W * 0.72, y: H * 0.35 },
+      3: { x: W * 0.28, y: H * 0.68 },
+      4: { x: W * 0.72, y: H * 0.68 }
+    };
+    nodes.forEach(function(d) {
+      d.x = quadrant[d.finding].x + (Math.random() - 0.5) * 60;
+      d.y = quadrant[d.finding].y + (Math.random() - 0.5) * 60;
+    });
+
+    // Force simulation
+    const sim = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id(d => d.id).distance(d => {
+        if (d.type === 'TIENE_PRESTAMO') return 40;
+        if (d.type === 'GARANTIZA') return 55;
+        return 70;
+      }).strength(0.6))
+      .force('charge', d3.forceManyBody().strength(-140))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide().radius(d => nodeR(d) + 8));
+
+    // Links (quadratic bezier paths for a softer, hand-drawn feel)
+    const linkEl = g.selectAll('.link')
+      .data(links).enter().append('path')
+      .attr('class', d => 'link lf' + d.finding)
+      .attr('fill', 'none')
+      .attr('stroke', d => linkColor(d))
+      .attr('stroke-width', d => d.type === 'GARANTIZA' ? 2 : 1.5)
+      .attr('stroke-dasharray', d => d.type === 'TIENE_PRESTAMO' ? '5,3' : null)
+      .attr('marker-end', d => d.type !== 'TIENE_PRESTAMO' ? 'url(#arrow-f' + d.finding + ')' : null)
+      .attr('opacity', 0.55);
+
+    // Node groups
+    const nodeEl = g.selectAll('.node')
+      .data(nodes).enter().append('g')
+      .attr('class', d => 'node nf' + d.finding)
+      .style('cursor', 'grab')
+      .call(
+        d3.drag()
+          .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; })
+      );
+
+    // Node circles
+    nodeEl.append('circle')
+      .attr('r', d => nodeR(d))
+      .attr('fill', d => nodeColor(d))
+      .attr('stroke', d => nodeStroke(d))
+      .attr('stroke-width', d => d.estatus === 'VENCIDO' ? 2.5 : 1.5)
+      .attr('fill-opacity', 0.9);
+
+    // Company labels below circle
+    nodeEl.filter(d => d.type === 'company').append('text')
+      .attr('dy', d => nodeR(d) + 11)
+      .attr('text-anchor', 'middle')
+      .attr('fill', '#A89A88')
+      .attr('font-size', '7.5')
+      .attr('font-family', 'Inter, sans-serif')
+      .attr('pointer-events', 'none')
+      .text(d => d.label.length > 14 ? d.label.substring(0, 13) + '\u2026' : d.label);
+
+    // Tooltip
+    const tooltip = document.getElementById('tooltip');
+    const ttW = 220, ttH = 110;
+    nodeEl
+      .on('mouseenter', (e, d) => {
+        const t = i18n[currentLang];
+        const typeLabelKey = d.type === 'person' ? 'tt_individual' : d.type === 'company' ? 'tt_company' : 'tt_loan';
+        let html = '<div class="tt-title">' + d.label + '</div>';
+        html += '<div class="tt-row"><span class="tt-key">' + t.tt_type + '</span><span class="tt-val">' + t[typeLabelKey] + '</span></div>';
+        if (d.score) html += '<div class="tt-row"><span class="tt-key">' + t.tt_score + '</span><span class="tt-val">' + d.score + '</span></div>';
+        if (d.estatus) {
+          const c = d.estatus === 'VENCIDO' ? '#F85149' : d.estatus === 'REESTRUCTURADO' ? '#D29922' : '#3FB950';
+          html += '<div class="tt-row"><span class="tt-key">' + t.tt_status + '</span><span class="tt-val" style="color:' + c + '">' + d.estatus + '</span></div>';
+        }
+        html += '<div class="tt-row"><span class="tt-key">' + t.tt_finding + '</span><span class="tt-val">' + t['fname' + d.finding] + '</span></div>';
+        html += '<div class="tt-id">' + d.id + '</div>';
+        tooltip.innerHTML = html;
+        tooltip.style.opacity = 1;
+        const left = Math.min(e.offsetX + 14, container.clientWidth - ttW - 10);
+        const top = Math.max(4, Math.min(e.offsetY - 50, container.clientHeight - ttH - 10));
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+      })
+      .on('mousemove', e => {
+        const left = Math.min(e.offsetX + 14, container.clientWidth - ttW - 10);
+        const top = Math.max(4, Math.min(e.offsetY - 50, container.clientHeight - ttH - 10));
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+      })
+      .on('mouseleave', () => { tooltip.style.opacity = 0; });
+
+    // Tick
+    function adjustedEndpoint(src, tgt) {
+      const dx = tgt.x - src.x, dy = tgt.y - src.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const r = nodeR(tgt) + 4;
+      return { x: tgt.x - dx / dist * r, y: tgt.y - dy / dist * r };
+    }
+
+    const CURVATURE = 18;
+    sim.on('tick', () => {
+      linkEl.attr('d', d => {
+        const sx = d.source.x, sy = d.source.y;
+        let tx, ty;
+        if (d.type === 'TIENE_PRESTAMO') {
+          tx = d.target.x; ty = d.target.y;
+        } else {
+          const ep = adjustedEndpoint(d.source, d.target);
+          tx = ep.x; ty = ep.y;
+        }
+        const dx = tx - sx, dy = ty - sy;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const perpX = -dy / len, perpY = dx / len;
+        const mx = (sx + tx) / 2, my = (sy + ty) / 2;
+        const cx = mx + perpX * CURVATURE;
+        const cy = my + perpY * CURVATURE;
+        return 'M' + sx + ' ' + sy + ' Q' + cx + ' ' + cy + ' ' + tx + ' ' + ty;
+      });
+      nodeEl.attr('transform', d => 'translate(' + d.x + ',' + d.y + ')');
+    });
+
+    // ─── HIGHLIGHT ───────────────────────────────────────────────────────────
+    window.highlight = function(finding) {
+      // Update buttons
+      document.querySelectorAll('.find-btn').forEach(b => {
+        b.classList.remove('active', 'active-all');
+        if (+b.dataset.finding === finding) {
+          b.classList.add(finding === 0 ? 'active-all' : 'active');
+        }
+      });
+
+      // Update finding cards
+      document.querySelectorAll('.finding-card').forEach(c => c.classList.remove('highlighted'));
+      if (finding > 0) {
+        const card = document.getElementById('fc' + finding);
+        if (card) card.classList.add('highlighted');
+      }
+
+      const DIM_NODE = 0.20, DIM_LINK = 0.10;
+      const BRIGHT_NODE = 1, BRIGHT_LINK = 0.85;
+
+      if (finding === 0) {
+        nodeEl.transition().duration(450)
+          .attr('opacity', BRIGHT_NODE)
+          .select('circle').attr('filter', null);
+        linkEl.transition().duration(450).attr('opacity', 0.55);
+      } else {
+        nodeEl.transition().duration(450)
+          .attr('opacity', d => d.finding === finding ? BRIGHT_NODE : DIM_NODE)
+          .select('circle')
+          .attr('filter', d => d.finding === finding ? 'url(#node-glow)' : null);
+        linkEl.transition().duration(450)
+          .attr('opacity', d => d.finding === finding ? BRIGHT_LINK : DIM_LINK);
+      }
+
+      // Scroll to card on mobile
+      if (finding > 0) {
+        const card = document.getElementById('fc' + finding);
+        if (card && window.innerWidth < 900) {
+          setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 300);
+        }
+      }
+    };
+  })();
+
+  function resetView() {
+    svgOuter.transition().duration(500)
+      .call(zoomBehavior.transform, d3.zoomIdentity);
+  }
+
+  // Helper functions
+  function nodeR(d) {
+    if (d.type === 'company') return 18;
+    if (d.type === 'person') return 13;
+    return 9;
+  }
+  function nodeColor(d) {
+    if (d.type === 'person') return '#388BFD';
+    if (d.type === 'company') {
+      if (d.estatus === 'REESTRUCTURADO') return '#D29922';
+      return '#F0883E';
+    }
+    // loan
+    if (d.estatus === 'VENCIDO') return '#F85149';
+    if (d.estatus === 'REESTRUCTURADO') return '#D29922';
+    return '#3FB950';
+  }
+  function nodeStroke(d) {
+    if (d.estatus === 'VENCIDO') return '#ff5555';
+    if (d.estatus === 'REESTRUCTURADO') return '#e6b520';
+    return 'rgba(255,255,255,0.15)';
+  }
+  function linkColor(d) {
+    if (d.type === 'GARANTIZA') return '#F0883E';
+    if (d.type === 'ES_ACCIONISTA_DE' || d.type === 'ES_DIRECTOR_DE') return '#388BFD';
+    return '#656D76';
+  }
+
+  // On load: apply saved or default language
+  var savedLang = localStorage.getItem('creditgraph-lang') || 'en';
+  setLang(savedLang);
+
+  </script>
+</body>
+</html>

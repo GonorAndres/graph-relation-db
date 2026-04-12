@@ -7,6 +7,8 @@ __pycache__/
 tmp/
 subagents_outputs/
 *.png
+web/screenshots/
 CLAUDE.md
 creditgraph-claude-code-context.md
 .claude/
+.vercel
