@@ -6,6 +6,14 @@
   <title>CreditGraph: When SQL Isn't Enough</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]),t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+".people (stub)"},o="init capture register register_once unregister opt_in_capturing opt_out_capturing has_opted_in_capturing has_opted_out_capturing identify alias people.set people.set_once set_config reset get_distinct_id getFeatureFlag getFeatureFlagPayload isFeatureEnabled reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onFeatureFlags onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    posthog.init('phc_DYrSznvPeJuXPHgj2Nw9BIluiGdwkbuSSih3lu6PtmH', {
+      api_host: 'https://us.i.posthog.com',
+      autocapture: false,
+      capture_pageview: true
+    });
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -827,7 +835,7 @@
           <span class="stack-tag">UK PSC / BODS</span>
           <span class="stack-tag">LightGBM</span>
         </div>
-        <a class="footer-link" href="https://github.com/GonorAndres/graph-relation-db" target="_blank" rel="noopener" data-i18n="footer_github">View on GitHub &#8599;</a>
+        <a class="footer-link" href="https://github.com/GonorAndres/graph-relation-db" target="_blank" rel="noopener" data-i18n="footer_github" onclick="posthog.capture('github_link_clicked')">View on GitHub &#8599;</a>
       </div>
     </div>
   </footer>
@@ -1051,6 +1059,7 @@
       if (i18n[lang][key] !== undefined) el.innerHTML = i18n[lang][key];
     });
     localStorage.setItem('creditgraph-lang', lang);
+    posthog.capture('language_switched', { language: lang });
   }
 
   // ─── GRAPH DATA ────────────────────────────────────────────────────────────
@@ -1298,6 +1307,8 @@
           b.classList.add(finding === 0 ? 'active-all' : 'active');
         }
       });
+      const FINDING_NAMES = ['show_all','guarantee_chain','circular_guarantee','contagion_hub','hidden_concentration'];
+      posthog.capture('finding_highlighted', { finding_id: finding, finding_name: FINDING_NAMES[finding] });
 
       // Update finding cards
       document.querySelectorAll('.finding-card').forEach(c => c.classList.remove('highlighted'));
