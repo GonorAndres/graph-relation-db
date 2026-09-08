@@ -1,0 +1,533 @@
+{
+  "version": 1,
+  "provenance": {
+    "kind": "fully_synthetic",
+    "reference_date": "2026-01-01",
+    "generator": "scripts/build_demo.py",
+    "currency": "MXN",
+    "seed": 42,
+    "description": "Fixed fictional fixtures; no real company finances, live database, or empirical findings.",
+    "query_schema": "Illustrative Neo4j mapping: Person/Company/Loan nodes, OWNS/GUARANTEES/CONTROLS/SHAREHOLDER edges; distinct from historical Spanish schema."
+  },
+  "scenarios": [
+    {
+      "id": "control",
+      "title": {
+        "en": "Shared control",
+        "es": "Control compartido"
+      },
+      "observation": {
+        "en": "Three companies borrow separately. The same person controls all three.",
+        "es": "Tres empresas tienen créditos separados. Una misma persona controla las tres."
+      },
+      "consequence": {
+        "en": "MXN 1,800,000 belongs to one connected group. Shared control deserves a combined review.",
+        "es": "MXN 1,800,000 pertenecen a un grupo conectado. El control común merece una revisión conjunta."
+      },
+      "review": {
+        "en": "Check group limits and dependence on the controller before assuming diversification.",
+        "es": "Revisar los límites del grupo y la dependencia del controlador antes de asumir diversificación."
+      },
+      "nodes": [
+        {
+          "id": "P01",
+          "label": "Alex Rivera",
+          "type": "person"
+        },
+        {
+          "id": "C01",
+          "label": "Lumen",
+          "type": "company"
+        },
+        {
+          "id": "C02",
+          "label": "Norte",
+          "type": "company"
+        },
+        {
+          "id": "C03",
+          "label": "Prisma",
+          "type": "company"
+        },
+        {
+          "id": "L01",
+          "label": "L01",
+          "type": "loan"
+        },
+        {
+          "id": "L02",
+          "label": "L02",
+          "type": "loan"
+        },
+        {
+          "id": "L03",
+          "label": "L03",
+          "type": "loan"
+        }
+      ],
+      "edges": [
+        {
+          "source": "C01",
+          "target": "L01",
+          "type": "owns"
+        },
+        {
+          "source": "C02",
+          "target": "L02",
+          "type": "owns"
+        },
+        {
+          "source": "C03",
+          "target": "L03",
+          "type": "owns"
+        },
+        {
+          "source": "P01",
+          "target": "C01",
+          "type": "controls"
+        },
+        {
+          "source": "P01",
+          "target": "C02",
+          "type": "controls"
+        },
+        {
+          "source": "P01",
+          "target": "C03",
+          "type": "controls"
+        }
+      ],
+      "loans": [
+        {
+          "id": "L01",
+          "borrower": "Lumen",
+          "borrower_id": "C01",
+          "amount_mxn": 600000,
+          "relationship": {
+            "en": "Shared controller",
+            "es": "Controlador común"
+          }
+        },
+        {
+          "id": "L02",
+          "borrower": "Norte",
+          "borrower_id": "C02",
+          "amount_mxn": 800000,
+          "relationship": {
+            "en": "Shared controller",
+            "es": "Controlador común"
+          }
+        },
+        {
+          "id": "L03",
+          "borrower": "Prisma",
+          "borrower_id": "C03",
+          "amount_mxn": 400000,
+          "relationship": {
+            "en": "Shared controller",
+            "es": "Controlador común"
+          }
+        }
+      ],
+      "metrics": {
+        "exposure_mxn": 1800000,
+        "loan_count": 3,
+        "borrower_count": 3
+      },
+      "query": "MATCH (c:Person)-[:CONTROLS]->(e:Company)\nWITH c, collect(DISTINCT e) AS companies\nWHERE size(companies) >= 2\nUNWIND companies AS e\nMATCH (e)-[:OWNS]->(p:Loan)\nWITH c, collect(DISTINCT p) AS loans\nRETURN c.id, reduce(total = 0, p IN loans | total + p.amount_mxn) AS exposure_mxn"
+    },
+    {
+      "id": "chain",
+      "title": {
+        "en": "Guarantee chain",
+        "es": "Cadena de garantías"
+      },
+      "observation": {
+        "en": "Alex guarantees Sam’s loan. Sam guarantees Noa’s. Follow the chain to see both obligations.",
+        "es": "Alex garantiza el crédito de Sam. Sam garantiza el de Noa. Sigue la cadena para ver ambas obligaciones."
+      },
+      "consequence": {
+        "en": "MXN 390,000 is connected. Alex’s guarantee does not automatically extend to Noa’s debt.",
+        "es": "MXN 390,000 están conectados. La garantía de Alex no se extiende automáticamente a la deuda de Noa."
+      },
+      "review": {
+        "en": "Check what each guarantee covers and whether each guarantor could afford a claim.",
+        "es": "Revisar qué cubre cada garantía y si cada garante podría responder a una reclamación."
+      },
+      "nodes": [
+        {
+          "id": "P11",
+          "label": "Alex Sol",
+          "type": "person"
+        },
+        {
+          "id": "P12",
+          "label": "Sam Vega",
+          "type": "person"
+        },
+        {
+          "id": "P13",
+          "label": "Noa Mar",
+          "type": "person"
+        },
+        {
+          "id": "L11",
+          "label": "L11",
+          "type": "loan"
+        },
+        {
+          "id": "L12",
+          "label": "L12",
+          "type": "loan"
+        },
+        {
+          "id": "L13",
+          "label": "L13",
+          "type": "loan"
+        }
+      ],
+      "edges": [
+        {
+          "source": "P11",
+          "target": "L11",
+          "type": "owns"
+        },
+        {
+          "source": "P12",
+          "target": "L12",
+          "type": "owns"
+        },
+        {
+          "source": "P13",
+          "target": "L13",
+          "type": "owns"
+        },
+        {
+          "source": "P11",
+          "target": "L12",
+          "type": "guarantees"
+        },
+        {
+          "source": "P12",
+          "target": "L13",
+          "type": "guarantees"
+        }
+      ],
+      "loans": [
+        {
+          "id": "L11",
+          "borrower": "Alex Sol",
+          "borrower_id": "P11",
+          "amount_mxn": 90000,
+          "relationship": {
+            "en": "Alex’s own loan",
+            "es": "Crédito propio de Alex"
+          }
+        },
+        {
+          "id": "L12",
+          "borrower": "Sam Vega",
+          "borrower_id": "P12",
+          "amount_mxn": 120000,
+          "relationship": {
+            "en": "Guaranteed by Alex",
+            "es": "Garantizado por Alex"
+          }
+        },
+        {
+          "id": "L13",
+          "borrower": "Noa Mar",
+          "borrower_id": "P13",
+          "amount_mxn": 180000,
+          "relationship": {
+            "en": "Guaranteed by Sam; indirect link to Alex",
+            "es": "Garantizado por Sam; vínculo indirecto con Alex"
+          }
+        }
+      ],
+      "metrics": {
+        "exposure_mxn": 390000,
+        "loan_count": 3,
+        "borrower_count": 3
+      },
+      "query": "// Two explicit guarantee obligations, not transferred liability\nMATCH (a:Person)-[:GUARANTEES]->(p:Loan)<-[:OWNS]-(b:Person),\n      (b)-[:GUARANTEES]->(q:Loan)<-[:OWNS]-(c:Person)\nWHERE a <> b AND b <> c AND a <> c\nRETURN DISTINCT a.id, p.id, b.id, q.id, c.id"
+    },
+    {
+      "id": "cycle",
+      "title": {
+        "en": "Circular guarantees",
+        "es": "Garantías circulares"
+      },
+      "observation": {
+        "en": "Three borrowers guarantee one another in a closed loop. Every guarantor is inside the group.",
+        "es": "Tres deudores se garantizan mutuamente en un ciclo cerrado. Todos los garantes están dentro del grupo."
+      },
+      "consequence": {
+        "en": "MXN 360,000 relies on support within the group. The loop alone does not establish zero recovery.",
+        "es": "MXN 360,000 dependen del respaldo interno del grupo. El ciclo por sí solo no implica una recuperación nula."
+      },
+      "review": {
+        "en": "Check independent assets, collateral, and contract terms before relying on these guarantees.",
+        "es": "Revisar activos independientes, colaterales y contratos antes de confiar en estas garantías."
+      },
+      "nodes": [
+        {
+          "id": "P21",
+          "label": "Ari Luna",
+          "type": "person"
+        },
+        {
+          "id": "P22",
+          "label": "Dani Lago",
+          "type": "person"
+        },
+        {
+          "id": "P23",
+          "label": "Ren Cruz",
+          "type": "person"
+        },
+        {
+          "id": "L21",
+          "label": "L21",
+          "type": "loan"
+        },
+        {
+          "id": "L22",
+          "label": "L22",
+          "type": "loan"
+        },
+        {
+          "id": "L23",
+          "label": "L23",
+          "type": "loan"
+        }
+      ],
+      "edges": [
+        {
+          "source": "P21",
+          "target": "L21",
+          "type": "owns"
+        },
+        {
+          "source": "P22",
+          "target": "L22",
+          "type": "owns"
+        },
+        {
+          "source": "P23",
+          "target": "L23",
+          "type": "owns"
+        },
+        {
+          "source": "P21",
+          "target": "L22",
+          "type": "guarantees"
+        },
+        {
+          "source": "P22",
+          "target": "L23",
+          "type": "guarantees"
+        },
+        {
+          "source": "P23",
+          "target": "L21",
+          "type": "guarantees"
+        }
+      ],
+      "loans": [
+        {
+          "id": "L21",
+          "borrower": "Ari Luna",
+          "borrower_id": "P21",
+          "amount_mxn": 100000,
+          "relationship": {
+            "en": "Guaranteed by Ren",
+            "es": "Garantizado por Ren"
+          }
+        },
+        {
+          "id": "L22",
+          "borrower": "Dani Lago",
+          "borrower_id": "P22",
+          "amount_mxn": 120000,
+          "relationship": {
+            "en": "Guaranteed by Ari",
+            "es": "Garantizado por Ari"
+          }
+        },
+        {
+          "id": "L23",
+          "borrower": "Ren Cruz",
+          "borrower_id": "P23",
+          "amount_mxn": 140000,
+          "relationship": {
+            "en": "Guaranteed by Dani",
+            "es": "Garantizado por Dani"
+          }
+        }
+      ],
+      "metrics": {
+        "exposure_mxn": 360000,
+        "loan_count": 3,
+        "borrower_count": 3
+      },
+      "query": "MATCH (a:Person)-[:GUARANTEES]->(p:Loan)<-[:OWNS]-(b:Person),\n      (b)-[:GUARANTEES]->(q:Loan)<-[:OWNS]-(c:Person),\n      (c)-[:GUARANTEES]->(r:Loan)<-[:OWNS]-(a)\nWHERE a.id < b.id AND a.id < c.id AND b <> c\nRETURN a.id, b.id, c.id, p.id, q.id, r.id"
+    },
+    {
+      "id": "hub",
+      "title": {
+        "en": "Company hub",
+        "es": "Empresa compartida"
+      },
+      "observation": {
+        "en": "One company connects three shareholders with personal loans. Two also guarantee each other.",
+        "es": "Una empresa conecta a tres accionistas con créditos personales. Dos también se garantizan mutuamente."
+      },
+      "consequence": {
+        "en": "MXN 1,650,000 is linked to the company and its shareholders. Ownership signals a dependency, not a measured loss.",
+        "es": "MXN 1,650,000 están vinculados a la empresa y sus accionistas. La participación indica dependencia, no una pérdida medida."
+      },
+      "review": {
+        "en": "Check income dependence, liquidity, and direct guarantees. Count each loan once, even across multiple paths.",
+        "es": "Revisar dependencia de ingresos, liquidez y garantías directas. Contar cada crédito una vez, aunque existan varias rutas."
+      },
+      "nodes": [
+        {
+          "id": "P31",
+          "label": "Sol Alba",
+          "type": "person"
+        },
+        {
+          "id": "P32",
+          "label": "Cris Ríos",
+          "type": "person"
+        },
+        {
+          "id": "P33",
+          "label": "Paz Sierra",
+          "type": "person"
+        },
+        {
+          "id": "C31",
+          "label": "Faro",
+          "type": "company"
+        },
+        {
+          "id": "L31",
+          "label": "L31",
+          "type": "loan"
+        },
+        {
+          "id": "L32",
+          "label": "L32",
+          "type": "loan"
+        },
+        {
+          "id": "L33",
+          "label": "L33",
+          "type": "loan"
+        },
+        {
+          "id": "L34",
+          "label": "L34",
+          "type": "loan"
+        }
+      ],
+      "edges": [
+        {
+          "source": "C31",
+          "target": "L31",
+          "type": "owns"
+        },
+        {
+          "source": "P31",
+          "target": "L32",
+          "type": "owns"
+        },
+        {
+          "source": "P32",
+          "target": "L33",
+          "type": "owns"
+        },
+        {
+          "source": "P33",
+          "target": "L34",
+          "type": "owns"
+        },
+        {
+          "source": "P31",
+          "target": "C31",
+          "type": "shareholder"
+        },
+        {
+          "source": "P32",
+          "target": "C31",
+          "type": "shareholder"
+        },
+        {
+          "source": "P33",
+          "target": "C31",
+          "type": "shareholder"
+        },
+        {
+          "source": "P31",
+          "target": "L33",
+          "type": "guarantees"
+        },
+        {
+          "source": "P32",
+          "target": "L32",
+          "type": "guarantees"
+        }
+      ],
+      "loans": [
+        {
+          "id": "L31",
+          "borrower": "Faro",
+          "borrower_id": "C31",
+          "amount_mxn": 1200000,
+          "relationship": {
+            "en": "Company’s own loan",
+            "es": "Crédito de la empresa"
+          }
+        },
+        {
+          "id": "L32",
+          "borrower": "Sol Alba",
+          "borrower_id": "P31",
+          "amount_mxn": 150000,
+          "relationship": {
+            "en": "Shareholder; guaranteed by Cris",
+            "es": "Accionista; garantizado por Cris"
+          }
+        },
+        {
+          "id": "L33",
+          "borrower": "Cris Ríos",
+          "borrower_id": "P32",
+          "amount_mxn": 200000,
+          "relationship": {
+            "en": "Shareholder; guaranteed by Sol",
+            "es": "Accionista; garantizado por Sol"
+          }
+        },
+        {
+          "id": "L34",
+          "borrower": "Paz Sierra",
+          "borrower_id": "P33",
+          "amount_mxn": 100000,
+          "relationship": {
+            "en": "Shareholder’s own loan",
+            "es": "Crédito de accionista"
+          }
+        }
+      ],
+      "metrics": {
+        "exposure_mxn": 1650000,
+        "loan_count": 4,
+        "borrower_count": 4
+      },
+      "query": "MATCH (e:Company {id: 'C31'})\nOPTIONAL MATCH (c:Person)-[:SHAREHOLDER]->(e)\nWITH e, collect(DISTINCT c) + [e] AS borrowers\nUNWIND borrowers AS borrower\nMATCH (borrower)-[:OWNS]->(p:Loan)\nWITH collect(DISTINCT p) AS loans\nRETURN size(loans) AS loan_count,\n       reduce(total = 0, p IN loans | total + p.amount_mxn) AS exposure_mxn"
+    }
+  ]
+}

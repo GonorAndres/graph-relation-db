@@ -1,152 +1,67 @@
-# CreditGraph -- Topological Credit Risk Analysis
+# CreditGraph
 
-A credit risk knowledge graph exploring how ownership topology, guarantee chains, and corporate hierarchies create correlated exposure patterns that flat relational models systematically miss.
+**Which apparently separate borrowers should we review together?**
 
-Built on real public ownership data (GLEIF + UK Companies House) with a synthetic Mexican credit layer on top.
+A bilingual portfolio project for risk and data science audiences. Explore four fictional relationship patterns, inspect affected loans, and see the review each pattern would prompt. A separate experiment tests whether graph features improve simulated future-default prediction.
 
----
+## Run locally
 
-## What This Project Explores
+Python 3.12 is the reference environment. Install dependencies once:
 
-Traditional credit risk analysis treats each borrower independently. SQL queries aggregate by entity, by sector, by region -- but never by *connection*. This project investigates what happens when you model credit portfolios as graphs, where relationships between entities are first-class data rather than derived facts from table joins.
-
-**Core question:** What structural risk patterns become visible only when you represent a credit portfolio as a graph?
-
-**Findings:**
-- Circular guarantees (A guarantees B, B guarantees A) have no SQL equivalent at arbitrary depth -- Cypher finds them in one pattern match
-- Entity-level diversification is an illusion when control is concentrated: 80 companies controlled by 18 persons is not 80 independent risks
-- Contagion depth through guarantee chains is unknowable in advance -- SQL requires one JOIN per hop decided at query-write time, Cypher traverses at runtime
-- Calibrated default probabilities and graph topology answer different questions: individual PD vs systemic exposure. Neither replaces the other
-
----
-
-## Architecture
-
-```
-UK PSC topology + GLEIF MX entities
-        |
-        v
-  8 Python scripts (data acquisition, subgraph extraction,
-  identity mapping, scenario embedding, quality injection)
-        |
-        v
-  5 raw CSVs -- 1,150 records, 127 embedded quality issues
-        |
-        v
-  PySpark ETL on Databricks (validation, FK anti-joins,
-  state standardization, conservation checks)
-        |
-        v
-  Clean Parquet + rejected audit table
-        |
-        v
-  LightGBM + Platt calibration (three-way split,
-  scale_pos_weight for 4% class imbalance)
-        |
-        v
-  Neo4J AuraDB -- 853 nodes, 726 edges,
-  248 loans scored with calibrated PDs
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python scripts/build_showcase.py
+.venv/bin/python -m pytest tests -q
+python -m http.server 8000 --directory web
 ```
 
----
+Open http://localhost:8000. Generated website artifacts and D3 7.9.0 are included: viewing needs no Python packages, database, CDN, analytics, or cloud account. Serve over HTTP rather than opening index.html directly. Dependency installation requires network access; regeneration does not.
 
-## Graph Schema
+The homepage introduces connected borrowers with a shared-owner example and a short glossary. Follow its links to `analysis.html` for the interactive portfolio, model results, and methodology. English/Spanish selection carries between pages.
 
-```
-(:ClienteIndividual)-[:TIENE_PRESTAMO]->(:Prestamo)
-(:Empresa)-[:TIENE_PRESTAMO]->(:Prestamo)
-(:ClienteIndividual|Empresa)-[:GARANTIZA]->(:Prestamo)
-(:ClienteIndividual)-[:ES_ACCIONISTA_DE]->(:Empresa)
-(:ClienteIndividual)-[:ES_DIRECTOR_DE]->(:Empresa)
-(:Empresa)-[:ES_SUBSIDIARIA_DE]->(:Empresa)
-```
+## Deployment
 
-**Why Prestamo is a node, not a relationship property:** A guarantee is a relationship between a guarantor and a *loan*. If the loan is not a node, you cannot attach a guarantee to it. Anything that participates in more than one relationship type must be a node.
+Merging to `main` runs the validation workflow, deploys the `web/` frontend to the Cloudflare Pages project `graph-relation-db`, and deploys the configured Vercel project. The Pages workflow expects the GitHub Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`; the existing Vercel workflow uses `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. The repository currently contains no separate backend service, so Vercel is retained as the deployment target until one is added.
 
----
+Use `--demo-only` for quick content iteration. The default build regenerates all 15 model runs and 200 group-bootstrap replicates per run. Builders overwrite their generated artifacts deterministically.
 
-## Data Strategy
+## Investigations
 
-| Layer | Source | What it provides |
-|-------|--------|-----------------|
-| Ownership topology | UK PSC (real) | Who controls whom, ownership bands (25-50%, 50-75%, 75-100%) |
-| Corporate hierarchy | GLEIF API (real) | Mexican company names, RFC codes, parent-child chains |
-| Credit layer | Synthetic | Loans, guarantees, defaults -- calibrated to Mexican benchmarks |
+| Pattern | Consequence to investigate |
+| --- | --- |
+| Shared control | Several companies depend on one controller |
+| Guarantee chain | Direct guarantees connect to further dependencies |
+| Circular guarantees | Support comes from inside the same group |
+| Shared company dependency | Shareholders and a company have overlapping exposure |
 
-Real topology matters because random graph generators cannot replicate the structural patterns (shared directors, nested subsidiaries, concentrated controllers) that make graph queries meaningful. The credit questions can be synthetic without weakening the demonstration because the method transfers: swap the synthetic layer for a real loan book, queries work unchanged.
+Every total sums distinct outstanding loan balances in the displayed scenario. It is **connected exposure**, not expected loss, incremental exposure, recoverable protection, or automatic liability. Paths do not transfer liability.
 
----
+Names, amounts, and relationships are fictional. Curated scenarios demonstrate a method, not discovered empirical findings. Demo totals and model predictions belong to separate populations and must not be combined. Displayed Cypher uses an illustrative English schema, distinct from the historical Spanish schema.
 
-## What I Learned
+## Modeling experiment
 
-### PySpark on Databricks
-- Lazy evaluation: transformations build a DAG, only actions trigger execution. Catalyst optimizes the full chain before running anything
-- Anti-join for FK validation scales where `.isin(collected_list)` does not -- stays distributed, no driver-side collection
-- Explicit `StructType` schemas over `inferSchema`: control type coercion, preserve raw values for rejection reporting
-- `F.when()` chains instead of UDFs: stays inside the JVM, keeps Catalyst optimization intact
-- Serverless compute limitations: `.cache()` and Spark MLlib constructors are blocked by the Py4J security manager
+Five fixed seeds generate 10,000 borrowers in 1,000 disconnected guarantee groups. Observation-date financial attributes predict simulated default over the next 12 months. Outcomes combine individual financial stress, an unobserved group shock, and absent/moderate/strong dependence on connected borrowers' observed financial stress.
 
-### Credit Scoring and Calibration
-- Raw model scores are rankings, not probabilities. A score of 0.6 does not mean 60% default probability
-- Platt scaling (logistic regression on model outputs) converts rankings to calibrated probabilities
-- Three-way split (train/calibration/test) keeps calibration and evaluation independent -- two-way contaminates one or the other
-- `scale_pos_weight` prevents degenerate classifiers at 4% positive rate
-- Reliability diagram is the visual proof that calibration worked
+Compare constant-rate, borrower-only logistic regression, borrower-only LightGBM, and graph-enriched LightGBM. Entire groups enter train/calibration/test partitions (60/20/20). Preprocessing fits on training rows; sigmoid calibration fits on calibration rows. An explicit feature allowlist excludes future outcomes, identities, and hidden simulator variables.
 
-### Graph Thinking
-- Cypher pattern matching discovers traversal depth at runtime -- no hardcoded JOIN chains
-- The same portfolio looks fundamentally different through a graph lens: 80 independent entities become 18 controllers with correlated exposure
-- Topological metrics (degree, centrality) complement but do not replace traditional credit metrics (bureau score, DTI). They answer different questions
+Results include average precision (the reported PR metric), ROC-AUC, Brier score, log loss, calibration curves, positive counts, and 95% intervals from resampling held-out groups. All conditions are reported. The graph feature deliberately matches a simulator mechanism: positive results establish sensitivity to that assumption, not real-world predictive value. The 8% expected event rate is illustrative, not a regulatory benchmark. Group splitting does not test temporal generalization.
 
----
+Inspect [complete results](web/data/model-results.json), [configuration](artifacts/model/configuration.json), and [split membership](artifacts/model/split-membership.csv). Summary intervals condition on the five fitted runs; they do not capture all possible training-population uncertainty. See [scikit-learn's calibration documentation](https://scikit-learn.org/stable/modules/calibration.html) for evaluation terminology.
 
-## Project Structure
+## Engineering choices
 
-```
-creditgraph-spec.md               -- full architecture spec
-data/
-  raw/                             -- 5 CSVs with 127 quality issues
-  clean/                           -- validated output + rejected records
-  source/                          -- raw API downloads, manifests
-scripts/
-  00_acquire_gleif.py              -- GLEIF API: 7,015 MX entities
-  01_acquire_psc.py                -- UK PSC: 600 controllers
-  02_extract_subgraph.py           -- NetworkX subgraph extraction
-  03_map_to_creditgraph.py         -- Mexican identity mapping
-  04_embed_scenarios.py            -- structural risk patterns
-  04b_add_gleif_hierarchy.py       -- BBVA, Bimbo, Inbursa groups
-  05_embed_quality_issues.py       -- 127 data quality issues
-  06_generate_neo4j_load.py        -- clean CSVs + Cypher load scripts
-  07_load_neo4j.py                 -- AuraDB batch inserts
-notebooks/
-  etl_pyspark_creditgraph.py       -- Databricks ETL (PySpark)
-  credit_scoring_lightgbm.py       -- LightGBM + Platt calibration
-  stress_test_analysis_executed.ipynb -- stress test with live Cypher
-neo4j/
-  constraints.cypher               -- graph constraints
-  load_all.cypher                  -- load scripts
-docs/
-  architecture_decisions.md        -- 7 decisions in exploratory prose
-  pipeline_process.md              -- pipeline documentation
-```
+- Static HTML/CSS/JavaScript, bundled D3, and locally hosted Space Grotesk / IBM Plex Sans keep the demo independent of infrastructure availability. Font licenses are included in `web/fonts/`.
+- Versioned JSON supplies graph, table, and totals from one artifact.
+- English and Spanish share numerical evidence; keyboard controls, reduced motion, and tables offer alternatives to graph interaction.
+- SQL supports recursive traversal and cycle detection. This demonstrates relationship-oriented representation, not SQL impossibility. See [PostgreSQL documentation](https://www.postgresql.org/docs/16/queries-with.html).
 
----
+Details: [architecture decisions](docs/architecture_decisions.md) and [reproduction process](docs/pipeline_process.md).
 
-## Technical Stack
+## Historical research track
 
-- **Graph database:** Neo4J AuraDB
-- **Query language:** Cypher
-- **ETL:** PySpark on Databricks
-- **ML:** LightGBM + Platt calibration (sklearn)
-- **Data acquisition:** GLEIF API, Open Ownership BODS
-- **Graph analysis:** NetworkX
-- **Languages:** Python
+The numbered acquisition scripts, cloud notebooks, Neo4j loaders, executed stress notebook, and original specification record an earlier GLEIF/UK ownership prototype with a synthetic credit layer. Source/raw/clean datasets are absent from this checkout.
 
----
+The executed notebook preserves historical outputs, not current live measurements. Its counts are not the new website dataset. Original SQL, regulatory, contagion, and calibration claims were overstated and are not adopted here. In particular, the old model classifies contemporaneous status using delinquency features; this does not establish future-default prediction. The rebuilt experiment replaces that claim without reusing its scores. The original specification includes proposed features, not proof of implementation.
 
-## Limitations (Honest Framing)
-
-- The graph topology is simpler than production data. Real Mexican corporate groups have cross-holdings, multi-level nesting, and circular ownership that this dataset does not capture. Real data would have MORE connections, making the graph approach MORE valuable, not less.
-- Synthetic credit numbers are not auditable facts. The project demonstrates a method, not a conclusion.
-- The GLEIF parent-child layer is a flat tree (one parent, N children, one level deep). Real structures are deeper and messier.
-- UK PSC and GLEIF MX have zero entity overlap -- they demonstrate different contagion patterns in separate graph clusters, not one unified connected graph.
+Historical cloud loaders are optional and can write to external databases. They are not part of the offline build. No deployment or git action is part of regeneration.

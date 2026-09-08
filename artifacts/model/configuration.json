@@ -1,0 +1,77 @@
+{
+  "configuration": {
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "n_borrowers": 10000,
+    "n_groups": 1000,
+    "conditions": [
+      {
+        "name": "absent",
+        "network_strength": 0.0
+      },
+      {
+        "name": "moderate",
+        "network_strength": 0.75
+      },
+      {
+        "name": "strong",
+        "network_strength": 1.5
+      }
+    ],
+    "split": {
+      "train": 0.6,
+      "calibration": 0.2,
+      "test": 0.2
+    },
+    "bootstrap_repetitions": 200,
+    "borrower_features": [
+      "leverage",
+      "interest_coverage",
+      "cash_buffer"
+    ],
+    "graph_features": [
+      "relationship_count",
+      "guaranteed_exposure",
+      "connected_financial_stress"
+    ],
+    "lightgbm_parameters": {
+      "n_estimators": 150,
+      "learning_rate": 0.04,
+      "num_leaves": 15,
+      "min_child_samples": 60,
+      "reg_lambda": 2.0,
+      "verbosity": -1,
+      "n_jobs": 2,
+      "deterministic": true,
+      "force_col_wise": true
+    },
+    "calibration": "Logistic sigmoid on clipped probability logits; fit only on calibration split"
+  },
+  "generating_process": {
+    "observation_date": "2025-01-01",
+    "outcome_window": "2025-01-02 through 2026-01-01 (simulated)",
+    "formula": "P(default)=sigmoid(intercept + 1.1*financial_stress + network_strength*mean(guaranteed borrowers' observed financial_stress) + hidden_group_shock)",
+    "financial_stress": "(0.85*leverage - 0.65*interest_coverage - 0.45*cash_buffer)/sqrt(0.85^2+0.65^2+0.45^2); each attribute independent standard normal",
+    "intercept": "Solved per seed and condition to set mean simulated probability to 0.08; realized prevalence varies",
+    "hidden_group_shock": "One independent Normal(0,0.35) draw per relationship group; excluded from predictors",
+    "graph": "Each disconnected group is a directed guarantee ring with an additional outgoing chord with probability0.35 per borrower. Balances are LogNormal(10,0.7). All graph features precede outcomes.",
+    "limitations": "Edges are generated randomly; this is neither causal identification nor an estimate of real default risk. Absent network effects is a negative control. Temporal generalization is not tested by the group split."
+  },
+  "provenance": {
+    "generator": "scripts/model_experiment.py",
+    "generator_sha256": "d2eb1e211f0475a177116ee159ede654cd94771046d15d954c166044b046a941",
+    "versions": {
+      "numpy": "2.4.6",
+      "sklearn": "1.9.0",
+      "lightgbm": "4.6.0"
+    },
+    "split_membership": "artifacts/model/split-membership.csv",
+    "uncertainty": "95% percentile intervals from held-out whole-group resampling within each seed. Summary intervals average independent per-seed bootstrap draws; conditional on the five fitted runs, not population or between-training-run uncertainty.",
+    "uplift": "Paired graph-enriched minus borrower-only LightGBM on identical held-out group resamples; positive improves AP/AUC, negative improves Brier/log loss."
+  }
+}

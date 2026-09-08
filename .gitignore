@@ -12,3 +12,7 @@ CLAUDE.md
 creditgraph-claude-code-context.md
 .claude/
 .vercel
+.venv/
+.pytest_cache/
+.wrangler/
+.playwright-mcp/
