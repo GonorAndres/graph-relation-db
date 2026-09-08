@@ -1,4 +1,6 @@
 # CreditGraph — Project Specification
+> Historical design document, superseded by [the current README](README.md) and [architecture decisions](docs/architecture_decisions.md). This includes unimplemented proposals and overstated SQL, regulatory, and model-validity claims. It is preserved as research history, not the specification or evidence for the current showcase.
+
 **Version 1.0 | Target: VinkOS Data Scientist Role**
 
 ---
